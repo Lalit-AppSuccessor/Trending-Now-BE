@@ -25,11 +25,13 @@ app.listen(3000, "0.0.0.0", () => {
   console.log("Server running!!");
 });
 
-syncNewsFeed();
-
 setInterval(
-  () => {
-    syncNewsFeed();
+  async () => {
+    try {
+      await syncNewsFeed();
+    } catch (error) {
+      console.error("syncNewsFeed error:", error);
+    }
   },
-  1000 * 60 * 5,
+  1000 * 60 * 60 * 24,
 );
