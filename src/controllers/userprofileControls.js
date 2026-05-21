@@ -1,6 +1,9 @@
 import User from "../models/User.js";
 import jwt from "jsonwebtoken";
-import { generateUniqueUsername } from "../utils/usernameGen.js";
+import {
+  generateUniqueUsername,
+  isUsernameAvailable,
+} from "../utils/usernameGen.js";
 
 // REGISTER OR LOGIN
 export const createOrLoginUser = async (req, res) => {
