@@ -112,16 +112,31 @@ export const updateUser = async (req, res) => {
     const firebase_uid = req.auth_firebase_uid || "";
     const updates = { ...req.body };
 
+    const existingUser = await User.findOne({
+      firebaseUid: firebase_uid,
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     if (updates.username) {
-      const username = updates.username;
+      const username = updates.username.trim().toLowerCase();
 
-      const available = await isUsernameAvailable(username);
+      const usernameChanged = username !== existingUser.username;
 
-      if (!available) {
-        return res.status(400).json({
-          success: false,
-          message: "Username taken",
-        });
+      if (usernameChanged) {
+        const available = await isUsernameAvailable(username);
+
+        if (!available) {
+          return res.status(400).json({
+            success: false,
+            message: "Username taken",
+          });
+        }
       }
 
       updates.username = username.trim().toLowerCase();
