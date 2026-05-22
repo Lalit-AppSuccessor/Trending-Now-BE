@@ -123,7 +123,7 @@ router.post("/:id/like-toggle", async (req, res) => {
     // FIND USER
     const user = await User.findOne({
       firebaseUid: decoded.firebaseUid,
-    }).lean();
+    });
 
     if (!user) {
       return res.status(404).json({
