@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 
 import Article from "../models/ArticleStore.js";
 import Creator from "../models/CreatorArticle.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
