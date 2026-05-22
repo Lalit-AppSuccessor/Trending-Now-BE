@@ -103,29 +103,65 @@ router.post("/:id/like-toggle", async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id) {
-      return res.status(400).json({
+    // GET TOKEN
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
         success: false,
-        message: "Article ID are required",
+        message: "Unauthorized",
       });
     }
 
-    const article = await Article.findOneAndUpdate(
-      { _id: id },
-      { $inc: { "reactions.like": 1 } },
-      { returnDocument: "after" },
+    const token = authHeader.split(" ")[1];
+
+    // VERIFY TOKEN
+    const decoded = jwt.verify(token, process.env.JWT_SECRET_ACCESS);
+
+    // FIND USER
+    const user = await User.findOne({
+      firebaseUid: decoded.firebaseUid,
+    }).lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // CREATE ARRAY IF NOT EXISTS
+    if (!user.likedNews) {
+      user.likedNews = [];
+    }
+
+    // CHECK IF ALREADY LIKED
+    const alreadyLiked = user.likedNews.some(
+      (newsId) => newsId.toString() === id,
     );
-    console.log(article, id);
+
+    // TOGGLE LIKE
+    if (alreadyLiked) {
+      user.likedNews = user.likedNews.filter(
+        (newsId) => newsId.toString() !== id,
+      );
+    } else {
+      user.likedNews.push(id);
+    }
+
+    await user.save();
 
     res.json({
       success: true,
-      article,
+      liked: !alreadyLiked,
+      likedNews: user.likedNews,
     });
   } catch (error) {
     console.log(error);
 
     res.status(500).json({
       success: false,
+      message: "Server Error",
     });
   }
 });

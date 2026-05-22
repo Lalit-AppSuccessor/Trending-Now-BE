@@ -55,6 +55,13 @@ const UserSchema = new mongoose.Schema(
       default: null,
     },
 
+    likedNews: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Article",
+      },
+    ],
+
     // bio: {
     //   type: String,
     //   maxlength: 250,
