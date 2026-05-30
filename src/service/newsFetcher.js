@@ -9,7 +9,8 @@ import {
   HAPPENING_KEYWORDS,
 } from "../constants/keywords.js";
 
-const CHUNK_SIZE = 15;
+const NEWS_API_CHUNK_SIZE = 15;
+const CURRENTS_CHUNK_SIZE = 1;
 
 function chunkArray(array, size) {
   const chunks = [];
@@ -21,7 +22,16 @@ function chunkArray(array, size) {
   return chunks;
 }
 
+function getQueryTerms(creator, limit = 10) {
+  return [creator.name, ...(creator.keywords || []).slice(0, limit)];
+}
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ==========================
 // GET YOUTUBE CHANNEL INFO
+// ==========================
+
 async function getYoutubeChannelInfo(channelHandle) {
   try {
     const cleanHandle = channelHandle.replace("@", "").replace(/\s+/g, "");
@@ -30,21 +40,17 @@ async function getYoutubeChannelInfo(channelHandle) {
       `https://www.youtube.com/@${cleanHandle}`,
       {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         },
-
         timeout: 10000,
       },
     );
 
-    // CHANNEL ID
     const channelIdMatch =
       data.match(/"channelId":"(UC[^"]+)"/) ||
       data.match(/"externalId":"(UC[^"]+)"/) ||
       data.match(/https:\\\/\\\/www\.youtube\.com\\\/channel\\\/(UC[^\\"]+)/);
 
-    // AVATAR
     const avatarMatch = data.match(/"avatar":\{"thumbnails":\[(.*?)\]\}/);
 
     let avatar = null;
@@ -63,7 +69,6 @@ async function getYoutubeChannelInfo(channelHandle) {
 
     return {
       channelId: channelIdMatch?.[1] || null,
-
       avatar,
     };
   } catch (error) {
@@ -71,18 +76,18 @@ async function getYoutubeChannelInfo(channelHandle) {
 
     return {
       channelId: null,
-
       avatar: null,
     };
   }
 }
 
-// GET LATEST VIDEO FROM RSS
+// ==========================
+// GET RSS VIDEO
+// ==========================
+
 async function getLatestYoutubeVideo(channelId) {
   try {
-    if (!channelId) {
-      return null;
-    }
+    if (!channelId) return null;
 
     const { data } = await axios.get(
       `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`,
@@ -91,18 +96,13 @@ async function getLatestYoutubeVideo(channelId) {
       },
     );
 
-    // VIDEO ID
     const videoIdMatch = data.match(/<yt:videoId>(.*?)<\/yt:videoId>/);
 
-    // TITLE
     const titleMatch = data.match(/<entry>[\s\S]*?<title>(.*?)<\/title>/);
 
-    // PUBLISHED
     const publishedMatch = data.match(/<published>(.*?)<\/published>/);
 
-    if (!videoIdMatch?.[1]) {
-      return null;
-    }
+    if (!videoIdMatch?.[1]) return null;
 
     const videoId = videoIdMatch[1];
 
@@ -125,215 +125,314 @@ async function getLatestYoutubeVideo(channelId) {
 }
 
 export async function syncNewsFeed() {
-  console.log("sync started...");
+  try {
+    console.log("sync started...");
 
-  const creatorChunks = chunkArray(CREATOR_NAMES, CHUNK_SIZE);
+    const newsApiChunks = chunkArray(CREATOR_NAMES, NEWS_API_CHUNK_SIZE);
 
-  // FETCH NEWS IN PARALLEL
-  const responses = await Promise.all(
-    creatorChunks.map((chunk) => {
-      const creatorQuery = chunk
-        .map((creator) => `"${creator.name}"`)
-        .join(" OR ");
+    const currentsChunks = chunkArray(CREATOR_NAMES, CURRENTS_CHUNK_SIZE);
 
-      const q = `
-          (${creatorQuery})
-          AND
-          (
-            youtube
-            OR influencer
-            OR creator
-            OR instagram
-          )
-        `;
+    let newsApiArticles = [];
 
-      return axios.get("https://newsapi.org/v2/everything", {
-        params: {
-          q,
+    let currentsArticles = [];
 
-          language: "en",
+    // ======================
+    // CURRENTS API
+    // ======================
 
-          sortBy: "publishedAt",
+    for (const chunk of currentsChunks) {
+      try {
+        const creatorQuery = chunk
+          .flatMap((creator) => getQueryTerms(creator, 15))
+          .map((term) => `"${term}"`)
+          .join(" OR ");
 
-          pageSize: 100,
+        const q = `(${creatorQuery}) AND (youtube OR instagram OR influencer OR news)`;
 
-          apiKey: process.env.NEWS_API_KEY,
+        console.log("currents:", q);
+
+        const response = await axios.get(
+          "https://api.currentsapi.services/v1/search",
+          {
+            params: {
+              apiKey: process.env.CURRENTS_API_KEY,
+
+              query: q,
+
+              language: "en",
+            },
+          },
+        );
+
+        const articles = (response.data.news || []).map((item) => ({
+          title: item.title || "",
+
+          description: item.description || "",
+
+          content: item.content || "",
+
+          author: item.author || "",
+
+          url: item.url || "",
+
+          urlToImage: item.image || "",
+
+          source: {
+            name: item.author || "",
+          },
+
+          publishedAt: item.published || "",
+        }));
+
+        currentsArticles.push(...articles);
+      } catch (error) {
+        console.log("currents failed:", error?.response?.data || error.message);
+      }
+
+      await delay(2000);
+    }
+
+    // ======================
+    // NEWS API
+    // ======================
+
+    let newsApiDisabled = false;
+
+    for (const chunk of newsApiChunks) {
+      try {
+        if (newsApiDisabled) break;
+
+        const creatorQuery = chunk
+          .flatMap((creator) => getQueryTerms(creator, 8))
+          .map((term) => `"${term}"`)
+          .join(" OR ");
+
+        const q = `(${creatorQuery}) AND (youtube OR influencer OR creator OR instagram)`;
+
+        const response = await axios.get("https://newsapi.org/v2/everything", {
+          params: {
+            q,
+
+            language: "en",
+
+            sortBy: "publishedAt",
+
+            pageSize: 100,
+
+            apiKey: process.env.NEWS_API_KEY,
+          },
+        });
+
+        newsApiArticles.push(...(response.data.articles || []));
+      } catch (error) {
+        const err = error?.response?.data;
+
+        console.log("newsapi failed:", err || error.message);
+
+        if (err?.code === "rateLimited") {
+          newsApiDisabled = true;
+        }
+      }
+
+      await delay(2000);
+    }
+
+    // ======================
+    // MERGE ARTICLES
+    // ======================
+
+    const articles = [...newsApiArticles, ...currentsArticles];
+
+    console.log("newsapi:", newsApiArticles.length);
+
+    console.log("currents:", currentsArticles.length);
+
+    console.log("total:", articles.length);
+
+    // ======================
+    // DEDUPE ARTICLES
+    // ======================
+
+    const uniqueArticles = [
+      ...new Map(
+        articles
+          .filter((a) => a?.url)
+          .map((a) => [a.url.trim().toLowerCase(), a]),
+      ).values(),
+    ];
+
+    console.log("unique:", uniqueArticles.length);
+
+    const creatorMap = {};
+    const bulkOps = [];
+
+    for (const article of uniqueArticles) {
+      const searchableText = `
+    ${article.title || ""}
+    ${article.description || ""}
+    ${article.content || ""}
+    ${article.url || ""}
+    ${article.author || ""}
+    ${article.source?.name || ""}
+  `.toLowerCase();
+
+      const creatorScores = [];
+
+      for (const creator of CREATOR_NAMES) {
+        const searchTerms = [
+          creator.name,
+          creator.channelName?.replace("@", ""),
+          ...(creator.keywords || []),
+        ]
+          .filter(Boolean)
+          .map((x) => x.toLowerCase());
+
+        let score = 0;
+
+        for (const term of searchTerms) {
+          if (searchableText.includes(term)) {
+            score += term.length > 15 ? 5 : 2;
+          }
+        }
+
+        if (score > 0) {
+          creatorScores.push({
+            creator,
+            score,
+          });
+        }
+      }
+
+      if (!creatorScores.length) continue;
+
+      creatorScores.sort((a, b) => b.score - a.score);
+
+      const matchedCreator = creatorScores[0].creator;
+
+      const isBreaking = BREAKING_KEYWORDS.some((keyword) =>
+        searchableText.includes(keyword.toLowerCase()),
+      );
+
+      const isAlsoHappening = HAPPENING_KEYWORDS.some((keyword) =>
+        searchableText.includes(keyword.toLowerCase()),
+      );
+
+      let trendingScore = 10;
+
+      if (isBreaking) trendingScore += 50;
+
+      if (isAlsoHappening) trendingScore += 20;
+
+      trendingScore += (article.title || "").length * 0.2;
+      trendingScore += (article.description || "").split(" ").length * 0.1;
+
+      bulkOps.push({
+        updateOne: {
+          filter: {
+            url: article.url,
+          },
+          update: {
+            $set: {
+              title: article.title,
+              description: article.description,
+              content: article.content,
+              author: article.author,
+              url: article.url,
+              urlToImage: article.urlToImage,
+              source: article.source,
+              publishedAt: article.publishedAt,
+
+              creatorName: matchedCreator.name,
+              creatorChannel: matchedCreator.channelName,
+
+              isBreaking,
+              isAlsoHappening,
+              trendingScore,
+            },
+          },
+          upsert: true,
         },
       });
-    }),
-  );
 
-  // MERGE ARTICLES
-  const articles = responses.flatMap(
-    (response) => response.data.articles || [],
-  );
+      if (!creatorMap[matchedCreator.name]) {
+        creatorMap[matchedCreator.name] = {
+          creator: matchedCreator,
+          articleCount: 0,
+          breakingCount: 0,
+          score: 0,
+        };
+      }
 
-  const creatorMap = {};
+      creatorMap[matchedCreator.name].articleCount++;
+      creatorMap[matchedCreator.name].score += trendingScore;
 
-  for (const article of articles) {
-    const searchableText = `
-      ${article.title || ""}
-      ${article.description || ""}
-      ${article.content || ""}
-    `.toLowerCase();
-
-    let matchedCreator = null;
-
-    // FIND MATCHED CREATOR
-    for (const creator of CREATOR_NAMES) {
-      if (searchableText.includes(creator.name.toLowerCase())) {
-        matchedCreator = creator;
-
-        break;
+      if (isBreaking) {
+        creatorMap[matchedCreator.name].breakingCount++;
       }
     }
 
-    // SKIP IF NO MATCH
-    if (!matchedCreator) {
-      continue;
+    if (bulkOps.length) {
+      await Article.bulkWrite(bulkOps, {
+        ordered: false,
+      });
     }
 
-    // BREAKING DETECTION
-    const isBreaking = BREAKING_KEYWORDS.some((keyword) =>
-      searchableText.includes(keyword),
+    const totalSaved = Object.values(creatorMap).reduce(
+      (sum, creator) => sum + creator.articleCount,
+      0,
     );
 
-    // TRENDING SCORE
-    let trendingScore = 10;
+    console.log("Total saved count:", totalSaved);
 
-    if (isBreaking) {
-      trendingScore += 50;
-    }
+    const sortedCreators = Object.values(creatorMap).sort(
+      (a, b) => b.score - a.score,
+    );
+    // .slice(0, 10);
 
-    trendingScore += (article.title || "").length * 0.2;
+    await Promise.all(
+      sortedCreators.map(async (data) => {
+        const creator = data.creator;
 
-    trendingScore += (article.description || "").split(" ").length * 0.1;
+        const { channelId, avatar } = await getYoutubeChannelInfo(
+          creator.channelName,
+        );
 
-    // ALSO HAPPENING
-    const isAlsoHappening = HAPPENING_KEYWORDS.some((keyword) =>
-      searchableText.includes(keyword),
+        const latestVideo = await getLatestYoutubeVideo(channelId);
+
+        return Creator.findOneAndUpdate(
+          {
+            name: creator.name,
+          },
+          {
+            name: creator.name,
+            channelName: creator.channelName,
+            channelId,
+            image: avatar,
+            rss_feed: latestVideo,
+            articleCount: data.articleCount,
+            breakingCount: data.breakingCount,
+            trendingScore: data.score,
+          },
+          {
+            upsert: true,
+            returnDocument: "after",
+          },
+        );
+      }),
     );
 
-    if (isAlsoHappening) {
-      trendingScore += 20;
-    }
+    console.log("news synced!!");
 
-    // SAVE ARTICLE
-    await Article.findOneAndUpdate(
-      {
-        url: article.url,
-      },
-      {
-        title: article.title,
+    return {
+      success: true,
+      totalArticles: articles.length,
+      creators: sortedCreators.length,
+    };
+  } catch (error) {
+    console.log("syncNewsFeed error:", error);
 
-        description: article.description,
-
-        content: article.content,
-
-        author: article.author,
-
-        url: article.url,
-
-        urlToImage: article.urlToImage,
-
-        source: article.source,
-
-        publishedAt: article.publishedAt,
-
-        creatorName: matchedCreator.name,
-
-        creatorChannel: matchedCreator.channelName,
-
-        isBreaking,
-
-        isAlsoHappening,
-
-        trendingScore,
-      },
-      {
-        upsert: true,
-
-        returnDocument: "after",
-      },
-    );
-
-    // CREATOR STATS
-    if (!creatorMap[matchedCreator.name]) {
-      creatorMap[matchedCreator.name] = {
-        creator: matchedCreator,
-
-        articleCount: 0,
-
-        breakingCount: 0,
-
-        score: 0,
-      };
-    }
-
-    creatorMap[matchedCreator.name].articleCount += 1;
-
-    creatorMap[matchedCreator.name].score += trendingScore;
-
-    if (isBreaking) {
-      creatorMap[matchedCreator.name].breakingCount += 1;
-    }
+    return {
+      success: false,
+    };
   }
-
-  // TOP CREATORS
-  const sortedCreators = Object.values(creatorMap)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10);
-
-  // SAVE CREATORS
-  await Promise.all(
-    sortedCreators.map(async (data) => {
-      const creator = data.creator;
-
-      // GET CHANNEL INFO
-      const { channelId, avatar } = await getYoutubeChannelInfo(
-        creator.channelName,
-      );
-
-      // GET RSS VIDEO
-      const latestVideo = await getLatestYoutubeVideo(channelId);
-
-      return Creator.findOneAndUpdate(
-        {
-          name: creator.name,
-        },
-        {
-          name: creator.name,
-
-          channelName: creator.channelName,
-
-          channelId,
-
-          image: avatar,
-
-          rss_feed: latestVideo,
-
-          articleCount: data.articleCount,
-
-          breakingCount: data.breakingCount,
-
-          trendingScore: data.score,
-        },
-        {
-          upsert: true,
-
-          returnDocument: "after",
-        },
-      );
-    }),
-  );
-
-  console.log("news synced!!");
-
-  return {
-    success: true,
-
-    totalArticles: articles.length,
-
-    creators: sortedCreators.length,
-  };
 }
