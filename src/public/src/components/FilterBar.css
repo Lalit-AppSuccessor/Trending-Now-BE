@@ -1,0 +1,105 @@
+.filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 18px;
+}
+
+.filter-bar-inner {
+  display: flex;
+  gap: 4px;
+  padding: 10px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filter-bar-inner::-webkit-scrollbar { display: none; }
+
+.fb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text2);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.15px;
+  white-space: nowrap;
+  transition: all 0.18s;
+  cursor: pointer;
+}
+
+.fb-tab:hover {
+  border-color: var(--border3);
+  color: var(--text);
+  background: var(--bg3);
+}
+
+.fb-tab-emoji {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.fb-tab-count {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--bg4);
+  border: 1px solid var(--border);
+  color: var(--text3);
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+
+/* Active states per tab */
+.fb-tab--active.fb-tab--all {
+  background: var(--accent-bg);
+  color: var(--accent2);
+  border-color: var(--accent-border);
+}
+.fb-tab--active.fb-tab--all .fb-tab-count {
+  background: rgba(124, 106, 247, 0.15);
+  border-color: var(--accent-border);
+  color: var(--accent2);
+}
+
+.fb-tab--active.fb-tab--news {
+  background: var(--news-bg);
+  color: var(--news);
+  border-color: var(--news-border);
+}
+.fb-tab--active.fb-tab--news .fb-tab-count {
+  background: rgba(240, 168, 48, 0.15);
+  border-color: var(--news-border);
+  color: var(--news);
+}
+
+.fb-tab--active.fb-tab--lifestyle {
+  background: var(--green-bg);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+.fb-tab--active.fb-tab--lifestyle .fb-tab-count {
+  background: rgba(45, 212, 160, 0.15);
+  border-color: var(--green-border);
+  color: var(--green);
+}
+
+/* Social tab active state */
+.fb-tab--active.fb-tab--social {
+  background: var(--tw-bg);
+  color: var(--tw);
+  border-color: var(--tw-border);
+}
+.fb-tab--active.fb-tab--social .fb-tab-count {
+  background: rgba(29,155,240,0.15);
+  border-color: var(--tw-border);
+  color: var(--tw);
+}

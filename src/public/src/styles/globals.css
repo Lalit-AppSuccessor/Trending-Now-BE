@@ -1,0 +1,387 @@
+:root {
+  --bg: #09090e;
+  --bg2: #0f0f16;
+  --bg3: #16161f;
+  --bg4: #1c1c28;
+  --bg5: #222230;
+  --border: rgba(255, 255, 255, 0.06);
+  --border2: rgba(255, 255, 255, 0.11);
+  --border3: rgba(255, 255, 255, 0.18);
+  --text: #ededf5;
+  --text2: #9898b0;
+  --text3: #52526a;
+  --text4: #3a3a50;
+  --accent: #7c6af7;
+  --accent2: #a594ff;
+  --accent-bg: rgba(124, 106, 247, 0.1);
+  --accent-border: rgba(124, 106, 247, 0.25);
+  --fb: #5b9cf6;
+  --fb-bg: rgba(91, 156, 246, 0.08);
+  --fb-border: rgba(91, 156, 246, 0.18);
+  --ig: #f2698a;
+  --ig-bg: rgba(242, 105, 138, 0.08);
+  --ig-border: rgba(242, 105, 138, 0.2);
+  --yt: #ff5555;
+  --yt-bg: rgba(255, 85, 85, 0.08);
+  --yt-border: rgba(255, 85, 85, 0.2);
+  --news: #f0a830;
+  --news-bg: rgba(240, 168, 48, 0.08);
+  --news-border: rgba(240, 168, 48, 0.2);
+  --green: #2dd4a0;
+  --green-bg: rgba(45, 212, 160, 0.08);
+  --green-border: rgba(45, 212, 160, 0.2);
+  --tw: #1d9bf0;
+  --tw-bg: rgba(29, 155, 240, 0.08);
+  --tw-border: rgba(29, 155, 240, 0.2);
+  --sh: #a594ff;
+  --sh-bg: rgba(124, 106, 247, 0.1);
+  --sh-border: rgba(124, 106, 247, 0.25);
+  --font-display: "DM Sans", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+  --r: 14px;
+  --r-sm: 9px;
+  --r-lg: 20px;
+  --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 8px 28px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background: #05050b;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 20px 16px 48px;
+}
+
+#root {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+
+/* ── App shell ─────────────────────────────────────────── */
+.app {
+  width: 600px;
+  max-width: 100%;
+}
+
+.app-inner {
+  width: 100%;
+  background: var(--bg);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+
+/* ── Shared section layout ─────────────────────────────── */
+.section {
+  padding: 20px 18px 0;
+}
+.section + .section {
+  padding-top: 0;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.section-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.section-count {
+  font-size: 11px;
+  color: var(--text4);
+  margin-left: auto;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 2px 9px;
+  border-radius: 20px;
+}
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 20px 18px;
+}
+
+/* ── Platform badge ────────────────────────────────────── */
+.plat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.plat-badge.fb {
+  background: var(--fb-bg);
+  color: var(--fb);
+  border: 1px solid var(--fb-border);
+}
+.plat-badge.ig {
+  background: var(--ig-bg);
+  color: var(--ig);
+  border: 1px solid var(--ig-border);
+}
+.plat-badge.yt {
+  background: var(--yt-bg);
+  color: var(--yt);
+  border: 1px solid var(--yt-border);
+}
+.plat-badge.sh {
+  background: var(--sh-bg);
+  color: var(--sh);
+  border: 1px solid var(--sh-border);
+}
+.plat-badge.tw {
+  background: var(--tw-bg);
+  color: var(--tw);
+  border: 1px solid var(--tw-border);
+}
+.plat-badge.news {
+  background: var(--news-bg);
+  color: var(--news);
+  border: 1px solid var(--news-border);
+}
+
+/* ── Engagement pills ──────────────────────────────────── */
+.eng-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.ep {
+  font-size: 10.5px;
+  background: var(--bg4);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 20px;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* ── Animations ────────────────────────────────────────── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fade-up {
+  animation: fadeUp 0.38s ease forwards;
+}
+.fade-up-1 {
+  animation-delay: 0.05s;
+}
+.fade-up-2 {
+  animation-delay: 0.1s;
+}
+.fade-up-3 {
+  animation-delay: 0.16s;
+}
+
+/* ── Content area padding ──────────────────────────────── */
+.content-area {
+  padding-bottom: 24px;
+}
+
+/* ── Footer ────────────────────────────────────────────── */
+.app-footer {
+  padding: 16px 18px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text4);
+}
+.app-footer-dot {
+  opacity: 0.4;
+}
+
+/* ── Error state ───────────────────────────────────────── */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 12px;
+  padding: 40px 20px;
+  text-align: center;
+}
+.error-icon {
+  font-size: 36px;
+}
+.error-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+.error-msg {
+  font-size: 13px;
+  color: var(--text3);
+  line-height: 1.5;
+}
+.retry-btn {
+  margin-top: 8px;
+  background: var(--accent-bg);
+  color: var(--accent2);
+  border: 1px solid var(--accent-border);
+  padding: 9px 22px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  transition: background 0.18s;
+}
+.retry-btn:hover {
+  background: rgba(124, 106, 247, 0.18);
+}
+
+/* ── Mobile responsive ─────────────────────────────────── */
+
+/* 2-col grid → 1-col on narrow screens */
+.pg-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  body {
+    padding: 0 0 40px;
+  }
+
+  .app {
+    width: 100%;
+  }
+
+  .app-inner {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+  }
+
+  /* Profile hero */
+  .ph-top {
+    gap: 11px;
+  }
+  .ph-avatar {
+    width: 58px;
+    height: 58px;
+    font-size: 20px;
+    border-radius: 18px;
+  }
+  .ph-name {
+    font-size: 18px;
+  }
+  .ph-updated {
+    display: none;
+  }
+
+  /* Stats: keep 3-col but reduce padding */
+  .hero-stat-card {
+    padding: 10px 9px 9px;
+  }
+  .hsc-val {
+    font-size: 16px;
+  }
+  .hsc-sub {
+    display: none;
+  }
+
+  /* Sections */
+  .section {
+    padding: 16px 14px 0;
+  }
+  .section-divider {
+    margin: 16px 14px;
+  }
+  .trending-section .section-head {
+    padding: 0 14px;
+  }
+  .tc-scroll {
+    padding: 4px 14px 14px;
+  }
+
+  /* Single column cards on mobile */
+  .pg-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Filter bar */
+  .filter-bar {
+    padding: 0 14px;
+  }
+  .fb-tab {
+    padding: 7px 12px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  .fb-tab-emoji {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .fb-tab-label {
+    display: none;
+  }
+  .fb-tab {
+    padding: 8px 10px;
+  }
+}

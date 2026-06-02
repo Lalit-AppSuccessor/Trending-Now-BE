@@ -42,6 +42,16 @@ const cleanCaption = (caption) => {
   );
 };
 
+const normalizeText = (text = "") =>
+  text
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/@\w+/g, "")
+    .replace(/#\w+/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 // Extract clean hashtags from an array (deduplicate, normalise)
 const cleanHashtags = (tags) => {
   if (!Array.isArray(tags) || tags.length === 0) return [];
@@ -51,7 +61,9 @@ const cleanHashtags = (tags) => {
 // Filter media items: strip empty urls, deduplicate by url
 const cleanMedia = (mediaArr) => {
   if (!Array.isArray(mediaArr)) return [];
+
   const seen = new Set();
+
   return mediaArr
     .filter((m) => m && m.url && m.url.trim())
     .filter((m) => {
@@ -62,6 +74,9 @@ const cleanMedia = (mediaArr) => {
     .map((m) => ({
       type: safe(m.type, "image"),
       url: m.url.trim(),
+
+      thumbnail: m.thumbnail || null,
+      poster: m.poster || null,
     }));
 };
 
@@ -227,6 +242,63 @@ function normaliseYouTubeShorts(shortChannels = []) {
   return posts;
 }
 
+function normaliseTwitter(twitterPosts = []) {
+  const posts = [];
+
+  for (const t of twitterPosts) {
+    if (!t) continue;
+
+    const text = cleanCaption(t.text || "");
+
+    posts.push({
+      id: safe(t.tweetId || t.tweet_id),
+
+      platform: "twitter",
+
+      account: safe(t.username || t.screen_name),
+      author: safe(t.name),
+
+      url:
+        safe(t.url) ||
+        (t.username && t.tweetId
+          ? `https://x.com/${t.username}/status/${t.tweetId}`
+          : null),
+
+      text,
+      caption: text,
+
+      normalizedText: normalizeText(text),
+
+      publishedAt: safeDate(t.createdAt || t.created_at),
+
+      likes: safeInt(t.likes || t.favorites),
+      replies: safeInt(t.replies),
+      retweets: safeInt(t.retweets),
+      quotes: safeInt(t.quotes),
+      views: safeInt(t.views),
+      bookmarks: safeInt(t.bookmarks),
+
+      followers: safeInt(t.followers),
+      verified: Boolean(t.verified),
+
+      media: cleanMedia(
+        Array.isArray(t.media)
+          ? t.media.map((m) => ({
+              type: m.type || "image",
+              url: m.url,
+              thumbnail: m.thumbnail || m.poster || null,
+            }))
+          : [],
+      ),
+
+      hasMedia: Array.isArray(t.media) && t.media.length > 0,
+
+      avatar: safe(t.avatar),
+    });
+  }
+
+  return posts;
+}
 // ─── Main Normaliser ────────────────────────────────────────────────────────
 
 export function normaliseCreator(rawDocs = [], newsDocs = []) {
@@ -244,12 +316,14 @@ export function normaliseCreator(rawDocs = [], newsDocs = []) {
     instagram: rawDocs.flatMap((d) => d?.instagram || []),
     youtube: rawDocs.flatMap((d) => d?.youtube || []),
     youtubeShorts: rawDocs.flatMap((d) => d?.youtubeShorts || []),
+    twitter: rawDocs.flatMap((d) => d?.twitter || []),
   };
 
   const facebook = normaliseFacebook(merged.facebook);
   const instagram = normaliseInstagram(merged.instagram);
   const youtube = normaliseYouTube(merged.youtube);
   const youtubeShorts = normaliseYouTubeShorts(merged.youtubeShorts);
+  const twitter = normaliseTwitter(merged.twitter);
 
   const news = Array.isArray(newsDocs)
     ? newsDocs.flatMap((d) => (Array.isArray(d?.articles) ? d.articles : [d]))
@@ -260,6 +334,7 @@ export function normaliseCreator(rawDocs = [], newsDocs = []) {
     ...instagram,
     ...youtube,
     ...youtubeShorts,
+    ...twitter,
     ...news,
   ];
 
@@ -292,6 +367,10 @@ export function normaliseCreator(rawDocs = [], newsDocs = []) {
   );
 
   const filteredYoutubeShorts = youtubeShorts.filter((p) =>
+    visibleIds.has(p.id || p.postId || p.url),
+  );
+
+  const filteredTwitter = twitter.filter((p) =>
     visibleIds.has(p.id || p.postId || p.url),
   );
 
@@ -343,6 +422,16 @@ export function normaliseCreator(rawDocs = [], newsDocs = []) {
       totalShorts: youtubeShorts.length,
     },
 
+    twitter: {
+      accounts: merged.twitter.filter((a) => a && a.data?.length > 0).length,
+
+      totalPosts: twitter.length,
+
+      totalViews: twitter.reduce((s, p) => s + (p.views || 0), 0),
+
+      totalLikes: twitter.reduce((s, p) => s + (p.likes || 0), 0),
+    },
+
     news: {
       totalArticles: news.length,
     },
@@ -360,6 +449,7 @@ export function normaliseCreator(rawDocs = [], newsDocs = []) {
       instagram: filteredInstagram,
       youtube: filteredYoutube,
       youtubeShorts: filteredYoutubeShorts,
+      twitter: filteredTwitter,
       news: filteredNews,
     },
 

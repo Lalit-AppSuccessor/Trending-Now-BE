@@ -1,0 +1,585 @@
+/* ── Outer wrapper: card + comment section ─── */
+.sc-outer {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: var(--shadow-card);
+  animation: fadeUp 0.38s ease both;
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s,
+    transform 0.18s;
+}
+.sc-outer:hover {
+  border-color: var(--border2);
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+/* ── Inner card (no border/radius — outer has it) ─── */
+.sc-card {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+}
+.sc-card--nolink {
+  cursor: default;
+}
+
+/* media */
+.sc-media {
+  width: 100%;
+  background: var(--bg4);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sc-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  display: block;
+  transition: transform 0.4s;
+}
+.sc-outer:hover .sc-media img {
+  transform: scale(1.04);
+}
+
+.sc-media-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.45) 0%, transparent 55%);
+}
+.sc-no-media {
+  width: 100%;
+  height: 100%;
+  background: var(--bg4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* play button */
+.sc-play-btn {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.sc-outer:hover .sc-play-btn {
+  background: rgba(255, 255, 255, 0.28);
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* body */
+.sc-body {
+  padding: 11px 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1;
+}
+.sc-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sc-date {
+  font-size: 9.5px;
+  color: var(--text4);
+  margin-left: auto;
+}
+.sc-caption {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.5;
+  display: -webkit-box;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* ════════════════════════════════════════════════════
+   PLATFORM EMBED WRAPPERS
+   ════════════════════════════════════════════════════ */
+
+/* Shared wrapper for YouTube / Facebook embeds */
+.sc-embed-wrap {
+  width: 100%;
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+
+.sc-embed-yt {
+  aspect-ratio: 16/9;
+}
+.sc-embed-shorts {
+  aspect-ratio: 9/16;
+  max-height: 470px;
+}
+.sc-embed-fb {
+  aspect-ratio: 16/9;
+}
+
+.sc-embed-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* Shared thumbnail container (before embed loads) */
+.sc-embed-thumb {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.sc-embed-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.4s;
+}
+.sc-embed-thumb:hover img {
+  transform: scale(1.04);
+}
+
+.sc-embed-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  background: var(--bg4);
+}
+.sc-embed-thumb-fallback--fb {
+  background: linear-gradient(135deg, #1a3a5c 0%, #0c1e30 100%);
+}
+
+.sc-embed-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ── YouTube play button ──────────────────────────── */
+.sc-embed-play {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  transition:
+    transform 0.2s,
+    opacity 0.2s;
+}
+.sc-embed-play:hover {
+  transform: scale(1.06);
+}
+
+.sc-embed-play span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+
+/* YouTube red button */
+.sc-embed-play--yt .yt-btn-shape {
+  fill: #ff0000;
+  transition: fill 0.15s;
+}
+.sc-embed-thumb:hover .sc-embed-play--yt .yt-btn-shape {
+  fill: #cc0000;
+}
+
+/* Facebook blue button */
+.sc-embed-play--fb {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 24px !important;
+  padding: 10px 16px !important;
+  gap: 8px !important;
+  flex-direction: row !important;
+  color: #fff;
+}
+.sc-embed-play--fb:hover {
+  background: rgba(24, 119, 242, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+.sc-embed-play--fb span {
+  font-size: 12px !important;
+}
+
+/* Shorts badge */
+.sc-shorts-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #ff0000;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 3px 7px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+/* ── Twitter/X embed ──────────────────────────────── */
+.sc-embed-tw {
+  background: #000;
+  padding: 10px 8px;
+  min-height: 120px;
+  aspect-ratio: unset;
+}
+.sc-tw-widget-inner {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+/* override twitter iframe centering */
+.sc-tw-widget-inner .twitter-tweet-rendered {
+  margin: 0 auto !important;
+}
+.sc-tw-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  color: var(--text4);
+  font-size: 12px;
+}
+.sc-tw-x-icon {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text3);
+}
+
+/* Link fallback for missing tweet IDs */
+.sc-embed-link-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 22px 16px;
+  background: #000;
+  color: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.18s;
+}
+.sc-embed-link-fallback:hover {
+  background: #111;
+}
+.sc-embed-link-fallback-icon {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+/* ════════════════════════════════════════════════════
+   INSTAGRAM CUSTOM PLAYER
+   ════════════════════════════════════════════════════ */
+
+.sc-ig-player {
+  width: 100%;
+  background: #000;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* gradient header */
+.sc-ig-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px 6px;
+  background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.sc-ig-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  background: #000;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sc-ig-thumb {
+  position: absolute;
+  inset: 0;
+}
+.sc-ig-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sc-ig-thumb-blank {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a0a24 0%, #3a0a1a 100%);
+}
+.sc-ig-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sc-embed-play--ig {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.3) !important;
+  transition:
+    background 0.2s,
+    transform 0.18s;
+}
+.sc-ig-video-wrap:hover .sc-embed-play--ig {
+  background: rgba(131, 58, 180, 0.55);
+  transform: scale(1.08);
+}
+
+/* Controls bar */
+.sc-ig-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  background: #0a0a0a;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sc-ig-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  flex-shrink: 0;
+}
+.sc-ig-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.sc-ig-ext {
+  margin-left: 2px;
+}
+
+.sc-ig-timeline {
+  flex: 1;
+  height: 18px;
+  position: relative;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+.sc-ig-timeline-bg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+}
+.sc-ig-timeline-fill {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #833ab4, #fd1d1d, #fcb045);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+  min-width: 0;
+}
+.sc-ig-timeline-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border-radius: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 4px rgba(131, 58, 180, 0.8);
+  transition: left 0.1s linear;
+  pointer-events: none;
+}
+.sc-ig-timeline:hover .sc-ig-timeline-bg {
+  height: 5px;
+}
+.sc-ig-timeline:hover .sc-ig-timeline-fill {
+  height: 5px;
+}
+
+.sc-ig-time {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sc-twitter-video-wrap {
+  width: 100%;
+  height: 500px;
+  max-height: 60vh;
+
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sc-twitter-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.sc-twitter-player {
+  width: 100%;
+}
+
+.sc-twitter-video-wrap {
+  width: 100%;
+  height: 500px;
+  max-height: 60vh;
+
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+}
+
+.sc-twitter-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.sc-twitter-thumb {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.sc-twitter-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sc-twitter-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.1));
+}
+
+.sc-twitter-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+
+  transform: translate(-50%, -50%);
+
+  width: 72px;
+  height: 72px;
+
+  border: 0;
+  border-radius: 50%;
+
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+.sc-cta-wrap {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.sc-post-cta-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text2);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.2s ease;
+}
+
+.sc-post-cta-icon:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text1);
+}
