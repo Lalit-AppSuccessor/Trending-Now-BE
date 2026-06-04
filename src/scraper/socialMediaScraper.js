@@ -790,15 +790,15 @@ export const YoutubeShorts = async (req, res) => {
       headless: true,
     });
 
-    const creatorData = CREATOR_NAMES.find(
-      (a) => a.name.toLowerCase() === creator.toLowerCase(),
-    );
+    const creatorConfigs = CREATOR_NAMES;
 
-    const matchKeywords = [
-      creator?.toLowerCase(),
-
-      ...(creatorData?.keywords || []).map((k) => k.toLowerCase()),
-    ].filter(Boolean);
+    const creatorKeywordMap = creatorConfigs.map((c) => ({
+      creator: c.name,
+      keywords: [
+        c.name.toLowerCase(),
+        ...(c.keywords || []).map((k) => k.toLowerCase()),
+      ],
+    }));
 
     const allYoutubeShortsData = [];
 
@@ -839,7 +839,7 @@ export const YoutubeShorts = async (req, res) => {
         // EXTRACT ONLY MATCHING SHORTS
         const shorts = await page
           .locator("a")
-          .evaluateAll((els, matchKeywords) => {
+          .evaluateAll((els, creatorKeywordMap) => {
             const results = [];
 
             els.forEach((a) => {
@@ -859,16 +859,20 @@ export const YoutubeShorts = async (req, res) => {
                   const caption = a.getAttribute("title")?.trim() || "";
 
                   // KEYWORD MATCH
-                  const isMatch = matchKeywords.some((keyword) =>
-                    caption.toLowerCase().includes(keyword),
-                  );
+                  const matchedCreators = creatorKeywordMap
+                    .filter((creatorObj) =>
+                      creatorObj.keywords.some((keyword) =>
+                        caption.toLowerCase().includes(keyword),
+                      ),
+                    )
+                    .map((creatorObj) => creatorObj.creator);
 
-                  if (!isMatch) return;
+                  if (!matchedCreators.length) return;
 
                   results.push({
                     url: href.split("?")[0],
-
                     caption,
+                    creators: matchedCreators,
                   });
                 }
               }
@@ -879,7 +883,7 @@ export const YoutubeShorts = async (req, res) => {
               (item, index, self) =>
                 index === self.findIndex((x) => x.url === item.url),
             );
-          }, matchKeywords);
+          }, creatorKeywordMap);
 
         console.log(shorts);
 
@@ -904,31 +908,68 @@ export const YoutubeShorts = async (req, res) => {
       }
     }
 
+    const creatorBuckets = {};
+
+    allYoutubeShortsData.forEach((account) => {
+      if (!account.data) return;
+
+      account.data.forEach((short) => {
+        short.creators.forEach((creatorName) => {
+          if (!creatorBuckets[creatorName]) {
+            creatorBuckets[creatorName] = {};
+          }
+
+          if (!creatorBuckets[creatorName][account.channel]) {
+            creatorBuckets[creatorName][account.channel] = {
+              channel: account.channel,
+              scrapedAt: account.scrapedAt,
+              totalShorts: 0,
+              data: [],
+            };
+          }
+
+          creatorBuckets[creatorName][account.channel].data.push({
+            url: short.url,
+            caption: short.caption,
+          });
+
+          creatorBuckets[creatorName][account.channel].totalShorts =
+            creatorBuckets[creatorName][account.channel].data.length;
+        });
+      });
+    });
+
+    const creatorData = Object.entries(creatorBuckets)
+      .map(([creatorName, channels]) => ({
+        creatorName,
+        totalAccounts: Object.keys(channels).length,
+        youtubeShorts: Object.values(channels),
+      }))
+      .filter((c) => c.totalAccounts > 0);
+
     // SAVE TO DB
-    await SocialDumpStore.findOneAndUpdate(
-      {
-        creatorName: creator,
-      },
-      {
-        $set: {
-          creatorName: creator,
+    // await SocialDumpStore.findOneAndUpdate(
+    //   {
+    //     creatorName: creator,
+    //   },
+    //   {
+    //     $set: {
+    //       creatorName: creator,
 
-          youtubeShorts: allYoutubeShortsData,
-        },
-      },
-      {
-        upsert: true,
+    //       youtubeShorts: allYoutubeShortsData,
+    //     },
+    //   },
+    //   {
+    //     upsert: true,
 
-        returnDocument: "after",
-      },
-    );
+    //     returnDocument: "after",
+    //   },
+    // );
 
     return res.json({
       success: true,
-
-      totalAccounts: allYoutubeShortsData.length,
-
-      data: allYoutubeShortsData,
+      totalCreators: creatorData.length,
+      data: creatorData,
     });
   } catch (error) {
     console.log(error);
