@@ -309,6 +309,10 @@ export function normaliseCreator(rawDocs = [], newsDocs = []) {
   // Merge all social documents
   const merged = {
     creatorName: rawDocs[0]?.creatorName,
+    socialFollows: {
+      instaFollowers: rawDocs[0]?.instaFCount,
+      youtubeSubs: rawDocs[0]?.youtubeFCount,
+    },
     createdAt: rawDocs[0]?.createdAt,
     updatedAt: rawDocs[0]?.updatedAt,
 
@@ -439,6 +443,7 @@ export function normaliseCreator(rawDocs = [], newsDocs = []) {
 
   return {
     creatorName: safe(merged.creatorName),
+    socialFollows: merged.socialFollows,
     createdAt: safeDate(merged.createdAt),
     updatedAt: safeDate(merged.updatedAt),
 

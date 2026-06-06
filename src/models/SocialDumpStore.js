@@ -16,6 +16,14 @@ const SocialDumpSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    instaFCount: {
+      type: Number,
+      default: 0,
+    },
+    youtubeFCount: {
+      type: Number,
+      default: 0,
+    },
 
     instagram: {
       type: mongoose.Schema.Types.Mixed,
