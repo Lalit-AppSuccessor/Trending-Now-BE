@@ -49,7 +49,8 @@ app.get("/proxy", async (req, res) => {
     if (
       parsed.hostname.includes("instagram.com") ||
       parsed.hostname.includes("cdninstagram.com") ||
-      parsed.hostname.includes("fbcdn.net")
+      parsed.hostname.includes("fbcdn.net") ||
+      parsed.hostname.includes("instagram.fark1-1.fna")
     ) {
       referer = "https://www.instagram.com/";
     }
