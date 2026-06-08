@@ -142,54 +142,46 @@ function normaliseFacebook(fbAccounts = []) {
 function normaliseInstagram(igAccounts = []) {
   const posts = [];
 
-  for (const account of igAccounts) {
-    if (!account || !Array.isArray(account.data) || account.data.length === 0)
-      continue;
+  for (const p of igAccounts) {
+    if (!p) continue;
 
-    for (const p of account.data) {
-      if (!p) continue;
+    const caption = cleanCaption(p.caption);
 
-      const caption = cleanCaption(p.caption);
+    posts.push({
+      id: safe(p.shortcode || p.postId),
+      postId: safe(p.postId),
 
-      posts.push({
-        id: safe(p.shortcode || p.postId),
-        postId: safe(p.postId),
+      platform: "instagram",
 
-        platform: "instagram",
+      account: safe(p.username),
+      ownerId: safe(p.ownerId),
 
-        account: safe(p.username || account.username),
-        ownerId: safe(p.ownerId),
+      url: safe(p.postUrl),
 
-        url: safe(p.postUrl),
+      text: caption,
+      caption,
 
-        text: caption,
-        caption,
+      hashtags: cleanHashtags(p.hashtags),
 
-        hashtags: cleanHashtags(p.hashtags),
+      media: cleanMedia(p.media),
+      mediaCount: safeInt(p.mediaCount),
 
-        media: cleanMedia(p.media),
-        mediaCount: safeInt(p.mediaCount),
+      thumbnail: safe(p.thumbnail),
 
-        thumbnail: safe(p.thumbnail),
+      isVideo: Boolean(p.isVideo),
+      isSidecar: Boolean(p.isSidecar),
 
-        isVideo: Boolean(p.isVideo),
-        isSidecar: Boolean(p.isSidecar),
+      likeCount: safe(p.likeCount),
+      commentCount: safeInt(p.commentCount),
 
-        likeCount: safe(p.likeCount),
-        commentCount: safeInt(p.commentCount),
+      unixDate: safeInt(p.unixDate),
+      publishedAt: p.unixDate
+        ? new Date(Number(p.unixDate) * 1000).toISOString()
+        : null,
 
-        unixDate: safeInt(p.unixDate),
-        publishedAt: p.unixDate
-          ? new Date(Number(p.unixDate) * 1000).toISOString()
-          : null,
-
-        time: safe(p.time),
-
-        scrapedAt: safeDate(account.scrapedAt),
-      });
-    }
+      time: safe(p.time),
+    });
   }
-
   return posts;
 }
 
