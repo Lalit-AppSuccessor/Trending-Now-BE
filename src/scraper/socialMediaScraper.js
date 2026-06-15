@@ -681,6 +681,12 @@ export const YoutubeShorts = async () => {
   try {
     browser = await chromium.launch({
       headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
     });
 
     const toDate = new Date();
@@ -832,14 +838,10 @@ export const YoutubeShorts = async () => {
 
           let oldShortsCount = 0;
 
+          const shortPage = await browser.newPage();
+
           for (const short of keywordMatchedShorts) {
-            processedUrls.add(short.url);
-
-            let shortPage;
-
             try {
-              shortPage = await browser.newPage();
-
               await shortPage.goto(short.url, {
                 waitUntil: "domcontentloaded",
                 timeout: 60000,
@@ -911,12 +913,10 @@ export const YoutubeShorts = async () => {
               }
             } catch (err) {
               console.log("Short error:", err.message);
-            } finally {
-              if (shortPage) {
-                await shortPage.close();
-              }
             }
           }
+
+          await shortPage.close();
 
           console.log(`${channel}: Matched ${matchingShorts.length} Shorts`);
 
@@ -983,6 +983,12 @@ export const YoutubeShorts = async () => {
 export async function syncCreatorFollowers() {
   const browser = await chromium.launch({
     headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+    ],
   });
 
   const page = await browser.newPage({
