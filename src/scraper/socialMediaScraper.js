@@ -373,7 +373,7 @@ export async function scrapeInstagramAccount({
   };
 }
 
-export const InstagramPosts = async (req, res) => {
+export const InstagramPosts = async () => {
   try {
     // Reset cache for every fresh scrape
     resetCreatorCache();
@@ -381,10 +381,10 @@ export const InstagramPosts = async (req, res) => {
     const accounts = INSTA_ACCOUNTS;
 
     if (!Array.isArray(accounts) || !accounts.length) {
-      return res.status(400).json({
+      return {
         success: false,
         error: "accounts array required",
-      });
+      };
     }
 
     // ----------------------------------------------------
@@ -455,22 +455,22 @@ export const InstagramPosts = async (req, res) => {
       });
     }
 
-    res.json({
+    const res = {
       success: true,
       totalAccounts: allInstagramData.length,
       totalCreators: CREATOR_NAMES.length,
       data: creatorResults,
-    });
+    };
 
     setImmediate(() => {
       syncInstagramMedia().catch(console.error);
     });
 
-    return;
+    return res;
   } catch (e) {
     console.log(e);
 
-    return res.json({
+    return {
       success: false,
       partial: true,
       error: e.message,
@@ -481,13 +481,13 @@ export const InstagramPosts = async (req, res) => {
         ...creator,
         seenPosts: undefined,
       })),
-    });
+    };
   }
 };
 
 // ─── Twitter: posts ────────────────────────────────────────────────
 
-export const TwitterPosts = async (req, res) => {
+export const TwitterPosts = async () => {
   try {
     const uniqueIds = new Set();
     const posts = [];
@@ -643,26 +643,26 @@ export const TwitterPosts = async (req, res) => {
       });
     }
 
-    return res.json({
+    return {
       success: true,
       keywordsProcessed: keywords.length,
       totalMatches: posts.length,
       totalCreators: CREATOR_NAMES.length,
       data: creatorArray,
-    });
+    };
   } catch (error) {
     console.error(error);
 
-    return res.status(500).json({
+    return {
       success: false,
       error: error.message,
-    });
+    };
   }
 };
 
 // ─── YOUTUBE: channel shorts ────────────────────────────────────────
 
-export const YoutubeShorts = async (req, res) => {
+export const YoutubeShorts = async () => {
   // const { channels } = req.body;
 
   const channels = YT_CHANNELS;
@@ -670,10 +670,10 @@ export const YoutubeShorts = async (req, res) => {
   resetCreatorCache();
 
   if (!Array.isArray(channels) || channels.length === 0) {
-    return res.status(400).json({
+    return {
       success: false,
       error: "channels array required",
-    });
+    };
   }
 
   let browser;
@@ -959,18 +959,18 @@ export const YoutubeShorts = async (req, res) => {
       });
     }
 
-    return res.json({
+    return {
       success: true,
       totalCreators: creatorResults.length,
       data: creatorResults,
-    });
+    };
   } catch (error) {
     console.log(error);
 
-    return res.status(500).json({
+    return {
       success: false,
       error: error.message,
-    });
+    };
   } finally {
     if (browser) {
       await browser.close();

@@ -7,9 +7,7 @@ import path, { normalize } from "path";
 import newsRoutes from "./routes/news.js";
 import healthRoutes from "./routes/health.js";
 import userRoutes from "./routes/userRoutes.js";
-import scraperRoutes from "./routes/scraperRoutes.js";
 import normalizeCreator from "./routes/normalizeCreator.js";
-
 import { syncNewsFeed } from "./service/newsFetcher.js";
 import { syncInstagramMedia } from "./utils/mediaCDNWorker.js";
 import {
@@ -28,7 +26,6 @@ app.use(express.json());
 
 app.use("/api/health", healthRoutes);
 app.use("/api/news", newsRoutes);
-app.use("/api/social", scraperRoutes);
 app.use("/media", express.static(path.join(process.cwd(), "media")));
 app.use("/api/user", userRoutes);
 app.use("/api/creator", normalizeCreator);
@@ -192,7 +189,9 @@ runEveryFridayAt6AM();
 
 // ----------- Testing function calls --------------
 
-// await syncNewsFeed();
+await syncNewsFeed();
 // syncInstagramMedia().catch(console.error);
 // await syncCreatorFollowers();
 await YoutubeShorts();
+await InstagramPosts();
+await TwitterPosts();
