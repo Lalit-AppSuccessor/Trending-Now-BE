@@ -189,9 +189,9 @@ runEveryFridayAt6AM();
 
 // ----------- Testing function calls --------------
 
-await syncNewsFeed();
+// await syncNewsFeed();
 // syncInstagramMedia().catch(console.error);
 // await syncCreatorFollowers();
 await YoutubeShorts();
-await InstagramPosts();
-await TwitterPosts();
+// await InstagramPosts();
+// await TwitterPosts();
