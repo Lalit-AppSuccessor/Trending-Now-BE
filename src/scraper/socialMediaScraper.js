@@ -8,6 +8,7 @@ import {
   YT_CHANNELS,
 } from "../constants/keywords.js";
 import {
+  blockResources,
   createCreatorCache,
   CREATOR_LOOKUP,
   extractMedia,
@@ -716,6 +717,10 @@ export const YoutubeShorts = async () => {
         console.log("Scraping:", shortsUrl);
 
         const page = await browser.newPage();
+        const shortPage = await browser.newPage();
+
+        await blockResources(page);
+        await blockResources(shortPage);
 
         await page.goto(shortsUrl, {
           waitUntil: "networkidle",
@@ -740,7 +745,7 @@ export const YoutubeShorts = async () => {
         let noNewContentCount = 0;
 
         let scrollCount = 0;
-        const MAX_SCROLLS = 100;
+        const MAX_SCROLLS = 60;
 
         let noKeywordMatchScrolls = 0;
         const MAX_NO_MATCH_SCROLLS = 30;
@@ -824,6 +829,12 @@ export const YoutubeShorts = async () => {
             noKeywordMatchScrolls = 0;
           }
 
+          if (!keywordMatchedShorts.length) {
+            await page.mouse.wheel(0, 15000);
+            await page.waitForTimeout(2000);
+            continue;
+          }
+
           if (noKeywordMatchScrolls >= MAX_NO_MATCH_SCROLLS) {
             console.log(
               `${channel}: No keyword matches found after ${MAX_NO_MATCH_SCROLLS} consecutive scrolls. Skipping channel.`,
@@ -838,7 +849,9 @@ export const YoutubeShorts = async () => {
 
           let oldShortsCount = 0;
 
-          const shortPage = await browser.newPage();
+          console.log(
+            `Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`,
+          );
 
           for (const short of keywordMatchedShorts) {
             try {
@@ -916,8 +929,6 @@ export const YoutubeShorts = async () => {
             }
           }
 
-          await shortPage.close();
-
           console.log(`${channel}: Matched ${matchingShorts.length} Shorts`);
 
           if (
@@ -940,6 +951,7 @@ export const YoutubeShorts = async () => {
           console.log(`${channel}: Reached max scroll limit (${MAX_SCROLLS})`);
         }
 
+        await shortPage.close();
         await page.close();
       } catch (err) {
         console.log(err);

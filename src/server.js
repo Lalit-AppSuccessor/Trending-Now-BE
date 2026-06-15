@@ -192,6 +192,6 @@ runEveryFridayAt6AM();
 // await syncNewsFeed();
 // syncInstagramMedia().catch(console.error);
 // await syncCreatorFollowers();
-// await YoutubeShorts();
+await YoutubeShorts();
 // await InstagramPosts();
 // await TwitterPosts();

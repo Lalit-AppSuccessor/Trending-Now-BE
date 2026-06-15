@@ -301,3 +301,20 @@ export async function savePlatformData({ creatorName, platform, posts }) {
     },
   );
 }
+
+export const blockResources = async (page) => {
+  await page.route("**/*", (route) => {
+    const type = route.request().resourceType();
+    const url = route.request().url();
+
+    if (
+      ["image", "media", "font"].includes(type) ||
+      url.includes("googlevideo.com") ||
+      url.includes("i.ytimg.com")
+    ) {
+      return route.abort();
+    }
+
+    return route.continue();
+  });
+};
