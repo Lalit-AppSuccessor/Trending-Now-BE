@@ -16,7 +16,7 @@ import {
   keywords,
   savePlatformData,
   sleep,
-} from "../utils/scraperhelpers.js";
+} from "../utils/scraperHelpers.js";
 import { syncInstagramMedia } from "../utils/mediaCDNWorker.js";
 import SocialDumpStore from "../models/SocialDumpStore.js";
 
