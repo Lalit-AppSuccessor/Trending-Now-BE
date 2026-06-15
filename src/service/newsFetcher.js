@@ -9,7 +9,7 @@ import {
   HAPPENING_KEYWORDS,
 } from "../constants/keywords.js";
 
-const NEWS_API_CHUNK_SIZE = 15;
+const NEWS_API_CHUNK_SIZE = 10;
 const CURRENTS_CHUNK_SIZE = 1;
 
 function chunkArray(array, size) {

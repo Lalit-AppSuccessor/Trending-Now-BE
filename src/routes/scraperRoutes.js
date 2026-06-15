@@ -1,19 +1,16 @@
 import express from "express";
 import {
-  FacebookPosts,
   InstagramPosts,
-  YoutubePosts,
+  TwitterPosts,
   YoutubeShorts,
 } from "../scraper/socialMediaScraper.js";
 
 const router = express.Router();
 
-router.get("/instagram/:creator", InstagramPosts);
+router.get("/instagram/", InstagramPosts);
 
-router.get("/facebook/:creator", FacebookPosts);
+router.get("/twitter/", TwitterPosts);
 
-router.get("/youtube/:creator", YoutubePosts);
-
-router.get("/youtube/shorts/:creator", YoutubeShorts);
+router.get("/youtube/shorts/", YoutubeShorts);
 
 export default router;

@@ -1,630 +1,657 @@
 import * as cheerio from "cheerio";
 import { chromium } from "playwright";
-import SocialDumpStore from "../models/SocialDumpStore.js";
+import dotenv from "dotenv";
 import { containsUsername } from "../utils/creatorNameRegex.js";
-import { CREATOR_NAMES } from "../constants/keywords.js";
+import {
+  CREATOR_NAMES,
+  INSTA_ACCOUNTS,
+  YT_CHANNELS,
+} from "../constants/keywords.js";
+import {
+  createCreatorCache,
+  CREATOR_LOOKUP,
+  extractMedia,
+  getMatchedCreators,
+  getPlatformScrapeConfig,
+  keywords,
+  savePlatformData,
+  sleep,
+} from "../utils/scraperhelpers.js";
+import { syncInstagramMedia } from "../utils/mediaCDNWorker.js";
+import SocialDumpStore from "../models/SocialDumpStore.js";
 
-// ─── Shared Browser Context (Instagram/imginn) ───────────────────────────────
+dotenv.config();
 
-let igContext = null;
+//  creator instagram posts caching
+let creatorCache = createCreatorCache();
 
-async function initIgBrowser() {
-  if (igContext) return;
-  igContext = await chromium.launchPersistentContext("./imginn-session", {
-    channel: "chrome",
-    headless: false,
-    args: [
-      "--disable-blink-features=AutomationControlled",
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-    ],
-    viewport: { width: 1366, height: 768 },
-  });
-
-  if (process.env.CF_CLEARANCE) {
-    await igContext.addCookies([
-      {
-        name: "cf_clearance",
-        value: process.env.CF_CLEARANCE,
-        domain: "imginn.com",
-        path: "/",
-        secure: true,
-        httpOnly: true,
-      },
-    ]);
-  }
-  console.log("Instagram browser initialized");
+function resetCreatorCache() {
+  creatorCache = createCreatorCache();
 }
 
-// Date parser
-const parseRelativeDate = (text) => {
-  if (!text) return null;
+// dynamic api key swapping
+const RAPIDAPI_KEYS = [
+  process.env.RAPID_API_KEY1,
+  process.env.RAPID_API_KEY2,
+  process.env.RAPID_API_KEY3,
+  process.env.RAPID_API_KEY4,
+].filter(Boolean);
 
-  const value = text.toLowerCase().trim();
+async function rapidApiFetch(url, options = {}) {
+  let lastError;
 
-  const now = new Date();
+  for (const [index, apiKey] of RAPIDAPI_KEYS.entries()) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          "x-rapidapi-key": apiKey,
+        },
+      });
 
-  // JUST NOW
-  if (value.includes("just now") || value.includes("few seconds")) {
-    return now;
+      if (response.status === 429) {
+        console.log(`Key ${index + 1} rate limited`);
+        continue;
+      }
+
+      if (response.status >= 500) {
+        console.log(`Provider error ${response.status}`);
+        continue;
+      }
+
+      if (response.status === 403) {
+        const clone = response.clone();
+        const text = await clone.text();
+
+        if (
+          text.toLowerCase().includes("quota") ||
+          text.toLowerCase().includes("limit") ||
+          text.toLowerCase().includes("exceeded")
+        ) {
+          console.log(`Key ${index + 1} quota exceeded`);
+          continue;
+        }
+      }
+
+      return response;
+    } catch (err) {
+      lastError = err;
+      console.log(`Key ${index + 1} failed: ${err.message}`);
+
+      await sleep(1000);
+    }
   }
 
-  const match = value.match(
-    /(\d+|a)\s+(second|minute|hour|day|week|month|year)/,
-  );
+  throw lastError || new Error("All RapidAPI keys exhausted");
+}
 
-  if (!match) return null;
+// ─── INSTAGRAM: profile posts ────────────────────────────────────────────────
 
-  let amount = match[1] === "a" ? 1 : parseInt(match[1]);
+export function processItems({
+  edges = [],
+  scannedIds,
+  matchedPosts,
+  creatorLookup,
+  rangeDate,
+  username,
+}) {
+  let scannedCount = 0;
+  let reachedDateLimit = false;
 
-  const unit = match[2];
+  for (const edge of edges) {
+    const item = edge?.node;
 
-  const date = new Date(now);
+    if (!item?.id) continue;
 
-  switch (unit) {
-    case "second":
-      date.setSeconds(date.getSeconds() - amount);
+    if (scannedIds.has(item.id)) continue;
+
+    scannedIds.add(item.id);
+
+    scannedCount++;
+
+    const postDate = new Date(item.taken_at * 1000);
+
+    if (postDate < rangeDate) {
+      reachedDateLimit = true;
       break;
+    }
 
-    case "minute":
-      date.setMinutes(date.getMinutes() - amount);
-      break;
+    const caption = item?.caption?.text || "";
 
-    case "hour":
-      date.setHours(date.getHours() - amount);
-      break;
-
-    case "day":
-      date.setDate(date.getDate() - amount);
-      break;
-
-    case "week":
-      date.setDate(date.getDate() - amount * 7);
-      break;
-
-    case "month":
-      date.setMonth(date.getMonth() - amount);
-      break;
-
-    case "year":
-      date.setFullYear(date.getFullYear() - amount);
-      break;
-  }
-
-  return date;
-};
-
-// ─── Helper: scrape a single imginn post page ────────────────────────────────
-
-async function scrapeImginnPost(postUrl) {
-  let postPage;
-
-  try {
-    postPage = await igContext.newPage();
-
-    await postPage.goto(`https://imginn.com${postUrl}`, {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-    });
-
-    await postPage.waitForTimeout(2000);
-
-    const html = await postPage.content();
-
-    const $ = cheerio.load(html);
-
-    // CAPTION
-    const caption = $("meta[property='og:description']").attr("content") || "";
-
-    // HASHTAGS
     const hashtags = caption.match(/#\w+/g) || [];
+
+    const searchableText = `${caption} ${hashtags.join(" ")}`
+      .toLowerCase()
+      .replace(/[#_]/g, "")
+      .replace(/\s+/g, "");
+
+    const matchedCreators = creatorLookup
+      .filter((creator) =>
+        creator.allKeywords.some((keyword) =>
+          searchableText.includes(
+            keyword.toLowerCase().replace(/[#_]/g, "").replace(/\s+/g, ""),
+          ),
+        ),
+      )
+      .map((creator) => creator.name);
+
+    if (!matchedCreators.length) {
+      continue;
+    }
 
     const media = [];
 
-    // ONLY INSIDE MEDIA WRAP
-    $(".media-wrap").each((_, wrap) => {
-      // IMAGES
-      $(wrap)
-        .find("img")
-        .each((_, el) => {
-          const src = $(el).attr("src") || $(el).attr("data-src");
+    // Reel
+    if (item.video_versions?.length) {
+      media.push({
+        type: "video",
+        url: item.video_versions[0].url,
+        poster: item.image_versions2?.candidates?.[0]?.url || null,
+        firebaseUrl: null,
+        firebasePoster: null,
+        uploadedAt: null,
+      });
+    }
 
-          if (src && src.startsWith("http")) {
-            media.push({
-              type: "image",
-              url: src,
-            });
-          }
+    // Carousel
+    else if (item.carousel_media?.length) {
+      for (const mediaItem of item.carousel_media) {
+        const videoUrl = mediaItem.video_versions?.[0]?.url;
+
+        const imageUrl = mediaItem.image_versions2?.candidates?.[0]?.url;
+
+        media.push({
+          type: videoUrl ? "video" : "image",
+          url: videoUrl || imageUrl,
+          poster: imageUrl || null,
+          firebaseUrl: null,
+          firebasePoster: null,
+          uploadedAt: null,
         });
+      }
+    }
 
-      // VIDEOS
-      $(wrap)
-        .find("video")
-        .each((_, el) => {
-          const videoSrc =
-            $(el).attr("src") || $(el).find("source").attr("src");
+    // Single Image
+    else {
+      const imageUrl = item.image_versions2?.candidates?.[0]?.url;
 
-          const poster = $(el).attr("poster") || null;
-
-          if (videoSrc && videoSrc.startsWith("http")) {
-            media.push({
-              type: "video",
-              url: videoSrc,
-              poster,
-            });
-          }
+      if (imageUrl) {
+        media.push({
+          type: "image",
+          url: imageUrl,
+          firebaseUrl: null,
+          uploadedAt: null,
         });
-    });
+      }
+    }
 
-    // REMOVE DUPLICATES
-    const uniqueMedia = media.filter(
-      (item, idx, self) =>
-        idx ===
-        self.findIndex((x) => x.url === item.url && x.type === item.type),
-    );
+    const post = {
+      creators: matchedCreators,
 
-    // DATE
-    const rawText = $(".time").text();
-    console.log(rawText);
-    const date =
-      rawText.match(
-        /(\d+\s+(seconds?|minutes?|hours?|days?|weeks?|months?|years?)\s+ago|a\s+(second|minute|hour|day|week|month|year)\s+ago)/i,
-      )?.[0] || null;
+      shortcode: item.code,
 
-    return {
-      shortcode: postUrl.replace("/p/", "").replace(/\//g, ""),
+      postId: item.id,
 
-      postUrl: `https://imginn.com${postUrl}`,
+      postUrl: `https://www.instagram.com/p/${item.code}/`,
+
+      username,
+
+      ownerId: item.owner?.id || null,
 
       caption,
 
       hashtags,
 
-      date,
+      time: postDate.toISOString(),
 
-      mediaCount: uniqueMedia.length,
+      unixDate: item.taken_at,
 
-      media: uniqueMedia,
+      likeCount: item.like_count || 0,
+
+      commentCount: item.comment_count || 0,
+
+      isVideo: item.video_versions?.length > 0,
+
+      isSidecar: item.carousel_media?.length > 0,
+
+      thumbnail: item.image_versions2?.candidates?.[0]?.url || null,
+
+      mediaCount: media.length,
+
+      media,
     };
-  } catch (e) {
-    console.log("IMGinn scrape error:", e.message);
 
-    return null;
-  } finally {
-    if (postPage && !postPage.isClosed()) {
-      await postPage.close();
+    matchedPosts.push(post);
+
+    for (const creatorName of matchedCreators) {
+      const bucket = creatorCache[creatorName];
+
+      if (!bucket) continue;
+
+      if (bucket.seenPosts.has(post.postId)) {
+        continue;
+      }
+
+      bucket.seenPosts.add(post.postId);
+
+      bucket.data.push(post);
+
+      bucket.totalPosts++;
     }
   }
+
+  return {
+    scannedCount,
+    reachedDateLimit,
+  };
 }
 
-// facebook Id finder
-async function facebookPageId(fbhandle) {
-  try {
-    const apiKey = process.env.RAPIDAPI_KEY;
+export async function fetchInstagramPosts(username, maxId = null) {
+  const body = { username };
 
-    let fbUrl = fbhandle;
+  if (maxId) {
+    body.maxId = maxId;
+  }
+  const url = "https://instagram120.p.rapidapi.com/api/instagram/posts";
 
-    if (!fbhandle.startsWith("http")) {
-      fbUrl = `https://facebook.com/${fbhandle}`;
+  const response = await rapidApiFetch(url, {
+    method: "POST",
+    headers: {
+      "x-rapidapi-host": "instagram120.p.rapidapi.com",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`RapidAPI Error ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function scrapeInstagramAccount({
+  username,
+  creatorLookup,
+  rangeDate,
+}) {
+  const scannedIds = new Set();
+
+  const matchedPosts = [];
+
+  const MAX_PAGES_PER_ACCOUNT = 15;
+
+  let totalScanned = 0;
+
+  let maxId = null;
+
+  let hasNextPage = true;
+
+  let reachedDateLimit = false;
+
+  let pageNumber = 1;
+
+  let stopReason = null;
+
+  while (
+    hasNextPage &&
+    !reachedDateLimit &&
+    pageNumber <= MAX_PAGES_PER_ACCOUNT
+  ) {
+    console.log(`[${username}] Fetch Page ${pageNumber}`);
+
+    let json;
+
+    try {
+      json = await fetchInstagramPosts(username, maxId);
+    } catch (e) {
+      console.log(`[${username}] fetch failed`, e.message);
+      break;
     }
 
-    const encodedUrl = encodeURIComponent(fbUrl);
+    const edges = json?.result?.edges || [];
 
-    const url = `https://facebook-scraper3.p.rapidapi.com/page/page_id?url=${encodedUrl}`;
+    if (!edges.length) {
+      break;
+    }
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "x-rapidapi-key": apiKey,
-        "x-rapidapi-host": "facebook-scraper3.p.rapidapi.com",
-        "Content-Type": "application/json",
-      },
+    const processed = processItems({
+      edges,
+      scannedIds,
+      matchedPosts,
+      creatorLookup,
+      rangeDate,
+      username,
     });
 
-    const data = await response.json();
+    totalScanned += processed.scannedCount;
 
-    console.log("Facebook ID Response:", data);
+    reachedDateLimit = processed.reachedDateLimit;
 
-    return data?.page_id || null;
-  } catch (error) {
-    console.log("Facebook Page ID Error:", error);
+    const pageInfo = json?.result?.page_info || {};
 
-    return null;
+    hasNextPage = pageInfo.has_next_page === true;
+
+    maxId = pageInfo.end_cursor || null;
+
+    console.log({
+      username,
+      pageNumber,
+      pagePosts: edges.length,
+      totalScanned,
+      matchedPosts: matchedPosts.length,
+      hasNextPage,
+      maxId,
+      reachedDateLimit,
+    });
+
+    pageNumber++;
+
+    if (!hasNextPage || !maxId) {
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+
+  if (reachedDateLimit) {
+    stopReason = "date_limit";
+  } else if (pageNumber > MAX_PAGES_PER_ACCOUNT) {
+    stopReason = "page_limit";
+  } else if (!hasNextPage) {
+    stopReason = "no_more_pages";
+  }
+
+  return {
+    username,
+    scrapedAt: new Date(),
+    scannedPosts: totalScanned,
+    totalPosts: matchedPosts.length,
+    stopReason,
+    data: matchedPosts,
+  };
 }
 
-// ─── INSTAGRAM: profile posts ────────────────────────────────────────────────
-
 export const InstagramPosts = async (req, res) => {
-  let page;
-
   try {
-    await initIgBrowser();
+    // Reset cache for every fresh scrape
+    resetCreatorCache();
 
-    const { creator } = req.params;
+    const accounts = INSTA_ACCOUNTS;
 
-    const { usernames } = req.body;
-
-    if (!Array.isArray(usernames) || usernames.length === 0) {
+    if (!Array.isArray(accounts) || !accounts.length) {
       return res.status(400).json({
         success: false,
-        error: "usernames array required",
+        error: "accounts array required",
       });
     }
 
-    const creatorData = CREATOR_NAMES.find(
-      (a) => a.name.toLowerCase() === creator.toLowerCase(),
-    );
-
-    const matchKeywords = [
-      creator?.toLowerCase(),
-
-      ...(creatorData?.keywords || []).map((k) => k.toLowerCase()),
-    ].filter(Boolean);
-
-    // LAST 2 MONTHS FILTER
-    const twoMonthsAgo = new Date();
-
-    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 5);
+    // ----------------------------------------------------
+    // LAST 3 MONTHS
+    // ----------------------------------------------------
 
     const allInstagramData = [];
 
-    for (const username of usernames) {
-      page = await igContext.newPage();
+    // ----------------------------------------------------
+    // PARALLEL ACCOUNT BATCHES
+    // ----------------------------------------------------
 
-      try {
-        await page.goto(`https://imginn.com/${username}/`, {
-          waitUntil: "domcontentloaded",
-          timeout: 120000,
-        });
+    const BATCH_SIZE = 2;
 
-        await page.waitForTimeout(3000);
+    const instagramConfig = await getPlatformScrapeConfig("instagram");
 
-        // ZOOM OUT
-        await page.evaluate(() => {
-          document.body.style.zoom = "20%";
-        });
+    for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+      const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
 
-        // CLICK LOAD MORE BUTTON IF PRESENT
-        // DYNAMIC LOAD MORE + SCROLL
-        let stopLoading = false;
+      const batch = accounts.slice(i, i + BATCH_SIZE);
 
-        let loadCount = 0;
+      console.log(
+        `Starting batch ${batchNumber} / ${Math.ceil(accounts.length / BATCH_SIZE)}`,
+      );
 
-        while (!stopLoading && loadCount < 50) {
-          try {
-            // REMOVE COOKIE / CONSENT POPUP
-            await page.evaluate(() => {
-              document
-                .querySelectorAll(
-                  ".fc-dialog-overlay, .fc-message-root, .fc-consent-root",
-                )
-                .forEach((el) => el.remove());
-            });
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-            // GET CURRENT HTML
-            const currentHtml = await page.content();
-
-            const $$ = cheerio.load(currentHtml);
-
-            let oldPostFound = false;
-
-            // CHECK DATES
-            $$(".item").each((_, item) => {
-              const dateText = $$(item).find(".time").text().trim();
-
-              const parsedDate = parseRelativeDate(dateText);
-
-              // STOP IF POSTS OLDER THAN RANGE FOUND
-              if (
-                parsedDate &&
-                !isNaN(parsedDate) &&
-                parsedDate < twoMonthsAgo
-              ) {
-                oldPostFound = true;
-              }
-            });
-
-            // STOP LOADING
-            if (oldPostFound) {
-              console.log("Old posts reached. Stopping scroll.");
-
-              stopLoading = true;
-
-              break;
-            }
-
-            // LOAD MORE BUTTON
-            const loadMoreBtn = await page.$("button.load-more");
-
-            if (loadMoreBtn) {
-              await loadMoreBtn.scrollIntoViewIfNeeded();
-
-              await page.waitForTimeout(1500);
-
-              await loadMoreBtn.click({
-                force: true,
-              });
-
-              console.log(`Load more clicked ${loadCount + 1}`);
-            } else {
-              // FALLBACK SCROLL
-              await page.mouse.wheel(0, 5000);
-            }
-
-            loadCount++;
-
-            await page.waitForTimeout(4000);
-          } catch (e) {
-            console.log("Dynamic loading failed:", e.message);
-
-            break;
-          }
-        }
-
-        await page.waitForTimeout(3000);
-
-        // // EXTRA SCROLL
-        // await page.evaluate(async () => {
-        //   await new Promise((resolve) => {
-        //     let totalHeight = 0;
-
-        //     const distance = 1000;
-
-        //     const timer = setInterval(() => {
-        //       window.scrollBy(0, distance);
-
-        //       totalHeight += distance;
-
-        //       if (
-        //         totalHeight >= document.body.scrollHeight ||
-        //         totalHeight > 15000
-        //       ) {
-        //         clearInterval(timer);
-
-        //         resolve();
-        //       }
-        //     }, 400);
-        //   });
-        // });
-
-        await page.waitForTimeout(3000);
-
-        const html = await page.content();
-
-        const $ = cheerio.load(html);
-
-        const previewPosts = [];
-
-        // LOOP POST CARDS
-        $(".item").each((_, item) => {
-          // POST URL
-          const href = $(item).find(".img a").attr("href");
-
-          if (!href?.includes("/p/")) return;
-
-          // TIME
-          const dateText = $(item).find(".time").text().trim();
-
-          // PARSE DATE
-          const parsedDate = parseRelativeDate(dateText);
-          console.log(
-            parsedDate,
-            !isNaN(parsedDate),
-            parsedDate >= twoMonthsAgo,
-            twoMonthsAgo,
-          );
-          // ONLY LAST 2 MONTHS
-          const isRecent =
-            parsedDate && !isNaN(parsedDate) && parsedDate >= twoMonthsAgo;
-
-          if (!isRecent) return;
-
-          // PREVIEW TEXT
-          const previewText = `
-            ${$(item).text()}
-            ${$(item).find("img").attr("alt") || ""}
-            ${$(item).find(".download").attr("aria-label") || ""}
-          `
-            .replace(/\s+/g, " ")
-            .trim()
-            .toLowerCase();
-
-          // KEYWORD MATCH
-          const isMatch = matchKeywords.some((keyword) =>
-            previewText.includes(keyword),
-          );
-
-          if (!isMatch) return;
-
-          previewPosts.push({
-            href,
-            date: dateText,
+      const batchResults = await Promise.allSettled(
+        batch.map(async (account) => {
+          return scrapeInstagramAccount({
+            username: account.username,
+            creatorLookup: CREATOR_LOOKUP,
+            rangeDate: instagramConfig.rangeDate,
           });
-        });
+        }),
+      );
 
-        // REMOVE DUPLICATES
-        const uniqueLinks = [
-          ...new Map(previewPosts.map((item) => [item.href, item])).values(),
-        ].slice(0, 20);
+      for (let j = 0; j < batchResults.length; j++) {
+        const result = batchResults[j];
 
-        const posts = [];
+        const account = batch[j];
 
-        // ONLY OPEN FILTERED POSTS
-        for (const post of uniqueLinks) {
-          const data = await scrapeImginnPost(post.href);
-
-          if (!data) continue;
-
-          const isKeywordMatch = matchKeywords.some((keyword) =>
-            `${data.caption || ""} ${data.hashtags?.join(" ") || ""}`
-              .toLowerCase()
-              .includes(keyword),
-          );
-
-          if (isKeywordMatch) {
-            posts.push(data);
-          }
-        }
-
-        allInstagramData.push({
-          username,
-
-          scrapedAt: new Date(),
-
-          scannedPosts: uniqueLinks.length,
-
-          totalPosts: posts.length,
-
-          data: posts,
-        });
-      } catch (err) {
-        allInstagramData.push({
-          username,
-          error: err.message,
-        });
-      } finally {
-        if (page && !page.isClosed()) {
-          await page.close();
+        if (result.status === "fulfilled") {
+          allInstagramData.push(result.value);
+        } else {
+          allInstagramData.push({
+            username: account.username,
+            error: result.reason?.message || "Unknown error",
+          });
         }
       }
+
+      console.log(`Completed batch ${batchNumber}`);
+
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     }
 
-    await SocialDumpStore.findOneAndUpdate(
-      {
-        creatorName: creator,
-      },
-      {
-        $set: {
-          creatorName: creator,
+    const creatorResults = Object.values(creatorCache).map((creator) => ({
+      ...creator,
+      seenPosts: undefined,
+    }));
 
-          instagram: allInstagramData,
-        },
-      },
-      {
-        upsert: true,
-
-        returnDocument: "after",
-      },
-    );
-
-    return res.json({
-      success: true,
-
-      totalAccounts: allInstagramData.length,
-
-      data: allInstagramData,
-    });
-  } catch (e) {
-    console.log(e);
-
-    return res.status(500).json({
-      success: false,
-
-      error: e.message,
-    });
-  } finally {
-    const existingPages = igContext.pages();
-
-    for (const p of existingPages) {
-      try {
-        const url = p.url();
-        console.log(url);
-        if (url === "about:blank" || url === "" || url === "chrome://newtab/") {
-          await p.close();
-        }
-      } catch {}
-    }
-  }
-};
-// ─── FACEBOOK: page posts (RapidAPI) ─────────────────────────────────────────
-
-export const FacebookPosts = async (req, res) => {
-  try {
-    const { creator } = req.params;
-    const { fbhandles } = req.body;
-
-    if (!Array.isArray(fbhandles) || fbhandles.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "fbhandles array required",
+    for (const creator of creatorResults) {
+      await savePlatformData({
+        creatorName: creator.creator,
+        platform: "instagram",
+        posts: creator.data,
       });
     }
 
-    const apiKey = process.env.RAPIDAPI_KEY;
+    res.json({
+      success: true,
+      totalAccounts: allInstagramData.length,
+      totalCreators: CREATOR_NAMES.length,
+      data: creatorResults,
+    });
 
-    const allFacebookData = [];
+    setImmediate(() => {
+      syncInstagramMedia().catch(console.error);
+    });
 
-    for (const fbhandle of fbhandles) {
+    return;
+  } catch (e) {
+    console.log(e);
+
+    return res.json({
+      success: false,
+      partial: true,
+      error: e.message,
+
+      totalCreators: CREATOR_NAMES.length,
+
+      data: Object.values(creatorCache).map((creator) => ({
+        ...creator,
+        seenPosts: undefined,
+      })),
+    });
+  }
+};
+
+// ─── Twitter: posts ────────────────────────────────────────────────
+
+export const TwitterPosts = async (req, res) => {
+  try {
+    const uniqueIds = new Set();
+    const posts = [];
+
+    const twitterConfig = await getPlatformScrapeConfig("twitter");
+
+    const rangeDate = twitterConfig.rangeDate;
+
+    for (const keyword of keywords) {
       try {
-        const pageId = await facebookPageId(fbhandle);
+        console.log(`Searching: ${keyword}`);
 
-        if (!pageId) {
-          allFacebookData.push({
-            fbhandle,
-            error: "Page ID not found",
-          });
+        const url = `https://twitter-api45.p.rapidapi.com/search.php?query=${encodeURIComponent(keyword)}&search_type=Top`;
 
-          continue;
-        }
-
-        const url = `https://facebook-scraper3.p.rapidapi.com/page/posts?page_id=${pageId}`;
-
-        const response = await fetch(url, {
+        const response = await rapidApiFetch(url, {
           method: "GET",
           headers: {
-            "x-rapidapi-key": apiKey,
-            "x-rapidapi-host": "facebook-scraper3.p.rapidapi.com",
+            "x-rapidapi-host": "twitter-api45.p.rapidapi.com",
             "Content-Type": "application/json",
           },
         });
 
+        if (!response.ok) {
+          const errorText = await response.text();
+
+          console.error(
+            `Search error for "${keyword}"`,
+            response.status,
+            errorText,
+          );
+
+          if (response.status === 429) {
+            console.log("Rate limited. Waiting 30 seconds...");
+            await sleep(30000);
+          } else {
+            await sleep(3000);
+          }
+
+          continue;
+        }
+
         const data = await response.json();
-        console.log(data);
-        const filteredPosts =
-          data?.results?.filter((post) => {
-            console.log(post.author.name);
-            return containsUsername(`${post.author.name || ""}`, creator);
-          }) || [];
 
-        allFacebookData.push({
-          fbhandle,
-          pageId,
-          scrapedAt: new Date(),
-          totalPosts: filteredPosts.length,
-          data: filteredPosts,
-        });
+        const tweets = (data.timeline || []).filter(
+          (item) => item.type === "tweet",
+        );
+
+        console.log(`"${keyword}" => ${tweets.length} tweets`);
+
+        for (const tweet of tweets) {
+          const tweetId = tweet.tweet_id;
+
+          if (!tweetId) continue;
+
+          if (uniqueIds.has(tweetId)) continue;
+
+          uniqueIds.add(tweetId);
+
+          if (new Date(tweet.created_at) < rangeDate) {
+            continue;
+          }
+
+          const matchedCreators = getMatchedCreators(tweet.text || "");
+
+          if (!matchedCreators.length) {
+            continue;
+          }
+
+          const media = extractMedia(tweet);
+
+          if (!media || media.length === 0) {
+            continue;
+          }
+
+          posts.push({
+            creators: matchedCreators,
+
+            tweetId,
+
+            matchedKeyword: keyword,
+
+            username: tweet.screen_name || tweet.user_info?.screen_name || "",
+
+            name: tweet.user_info?.name || "",
+
+            text: tweet.text || "",
+
+            createdAt: tweet.created_at,
+
+            likes: tweet.favorites || 0,
+
+            quotes: tweet.quotes || 0,
+
+            views: Number(tweet.views || 0),
+
+            bookmarks: tweet.bookmarks || 0,
+
+            lang: tweet.lang || "",
+
+            media,
+
+            mediaCount: media.length,
+
+            avatar: tweet.user_info?.avatar || "",
+
+            followers: tweet.user_info?.followers_count || 0,
+
+            verified: tweet.user_info?.verified || false,
+
+            location: tweet.user_info?.location || "",
+
+            url: `https://x.com/${tweet.screen_name}/status/${tweetId}`,
+          });
+        }
+
+        await sleep(2000);
       } catch (err) {
-        allFacebookData.push({
-          fbhandle,
-          error: err.message,
-        });
+        console.error(`Keyword failed: ${keyword}`, err.message);
+
+        await sleep(5000);
       }
     }
 
-    await SocialDumpStore.findOneAndUpdate(
-      {
-        creatorName: creator,
-      },
-      {
-        $set: {
-          creatorName: creator,
-          facebook: allFacebookData,
-        },
-      },
-      {
-        upsert: true,
-        returnDocument: "after",
-      },
-    );
+    posts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    const creatorResults = {};
+
+    for (const creator of CREATOR_NAMES) {
+      creatorResults[creator.name] = {
+        creator: creator.name,
+        channelName: creator.channelName,
+        totalPosts: 0,
+        data: [],
+      };
+    }
+
+    for (const post of posts) {
+      for (const creatorName of post.creators || []) {
+        if (!creatorResults[creatorName]) continue;
+
+        creatorResults[creatorName].data.push(post);
+        creatorResults[creatorName].totalPosts++;
+      }
+    }
+
+    const creatorArray = Object.values(creatorResults);
+
+    for (const creator of creatorArray) {
+      await savePlatformData({
+        creatorName: creator.creator,
+        platform: "twitter",
+        posts: creator.data,
+      });
+    }
 
     return res.json({
       success: true,
-      totalAccounts: allFacebookData.length,
-      data: allFacebookData,
+      keywordsProcessed: keywords.length,
+      totalMatches: posts.length,
+      totalCreators: CREATOR_NAMES.length,
+      data: creatorArray,
     });
   } catch (error) {
-    console.log(error);
+    console.error(error);
 
     return res.status(500).json({
       success: false,
@@ -633,148 +660,14 @@ export const FacebookPosts = async (req, res) => {
   }
 };
 
-// ─── YOUTUBE: channel community posts ────────────────────────────────────────
-
-export const YoutubePosts = async (req, res) => {
-  const { creator } = req.params;
-  const { channels } = req.body;
-
-  if (!Array.isArray(channels) || channels.length === 0) {
-    return res.status(400).json({
-      success: false,
-      error: "channels array required",
-    });
-  }
-
-  let browser;
-
-  try {
-    browser = await chromium.launch({
-      headless: true,
-    });
-
-    const allYoutubeData = [];
-
-    for (const channel of channels) {
-      try {
-        let channelUrl = channel;
-
-        if (channel.startsWith("@")) {
-          channelUrl = `https://www.youtube.com/${channel}/posts`;
-        } else if (!channel.startsWith("http")) {
-          channelUrl = `https://www.youtube.com/@${channel}/posts`;
-        }
-
-        if (!channelUrl.includes("/posts")) {
-          channelUrl = channelUrl.replace(/\/$/, "") + "/posts";
-        }
-
-        const page = await browser.newPage();
-
-        await page.goto(channelUrl, {
-          waitUntil: "networkidle",
-          timeout: 120000,
-        });
-
-        for (let i = 0; i < 5; i++) {
-          await page.mouse.wheel(0, 3000);
-          await page.waitForTimeout(1500);
-        }
-
-        const posts = await page.evaluate(() => {
-          const results = [];
-
-          document
-            .querySelectorAll("ytd-backstage-post-thread-renderer")
-            .forEach((post) => {
-              const media = [];
-
-              post.querySelectorAll("img").forEach((img) => {
-                if (img.src) {
-                  media.push({
-                    type: "image",
-                    url: img.src,
-                  });
-                }
-              });
-
-              results.push({
-                text:
-                  post.querySelector("#content-text")?.innerText?.trim() ||
-                  null,
-                published:
-                  post
-                    .querySelector("#published-time-text a")
-                    ?.innerText?.trim() || null,
-                likes:
-                  post.querySelector("#vote-count-middle")?.innerText?.trim() ||
-                  null,
-                media,
-              });
-            });
-
-          return results;
-        });
-
-        // const filteredPosts = posts.filter((post) => {
-        //   console.log(post);
-        //   containsUsername(`${post.text || ""}`, creator);
-        // });
-        await page.close();
-
-        allYoutubeData.push({
-          channel,
-          scrapedAt: new Date(),
-          totalPosts: posts.length,
-          data: posts,
-        });
-      } catch (err) {
-        allYoutubeData.push({
-          channel,
-          error: err.message,
-        });
-      }
-    }
-
-    await SocialDumpStore.findOneAndUpdate(
-      {
-        creatorName: creator,
-      },
-      {
-        $set: {
-          creatorName: creator,
-          youtube: allYoutubeData,
-        },
-      },
-      {
-        upsert: true,
-        returnDocument: "after",
-      },
-    );
-
-    return res.json({
-      success: true,
-      totalAccounts: allYoutubeData.length,
-      data: allYoutubeData,
-    });
-  } catch (error) {
-    console.log(error);
-
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-  }
-};
+// ─── YOUTUBE: channel shorts ────────────────────────────────────────
 
 export const YoutubeShorts = async (req, res) => {
-  const { creator } = req.params;
+  // const { channels } = req.body;
 
-  const { channels } = req.body;
+  const channels = YT_CHANNELS;
+
+  resetCreatorCache();
 
   if (!Array.isArray(channels) || channels.length === 0) {
     return res.status(400).json({
@@ -790,23 +683,20 @@ export const YoutubeShorts = async (req, res) => {
       headless: true,
     });
 
-    const creatorConfigs = CREATOR_NAMES;
+    const toDate = new Date();
 
-    const creatorKeywordMap = creatorConfigs.map((c) => ({
-      creator: c.name,
-      keywords: [
-        c.name.toLowerCase(),
-        ...(c.keywords || []).map((k) => k.toLowerCase()),
-      ],
-    }));
+    const config = await getPlatformScrapeConfig("youtubeShorts");
 
-    const allYoutubeShortsData = [];
+    const fromDate = config.rangeDate;
+
+    console.log(
+      `Filtering Shorts from ${fromDate.toISOString()} to ${toDate.toISOString()}`,
+    );
 
     for (const channel of channels) {
       try {
         let shortsUrl = channel;
 
-        // BUILD SHORTS URL
         if (channel.startsWith("@")) {
           shortsUrl = `https://www.youtube.com/${channel}/shorts`;
         } else if (!channel.startsWith("http")) {
@@ -826,157 +716,259 @@ export const YoutubeShorts = async (req, res) => {
           timeout: 120000,
         });
 
-        // WAIT FOR PAGE LOAD
-        await page.waitForTimeout(5000);
+        await page.setViewportSize({
+          width: 1920,
+          height: 4000,
+        });
 
-        // SCROLL TO LOAD MORE SHORTS
-        for (let i = 0; i < 12; i++) {
-          await page.mouse.wheel(0, 4000);
+        await page.evaluate(() => {
+          document.body.style.zoom = "30%";
+        });
 
-          await page.waitForTimeout(1500);
-        }
+        await page.waitForTimeout(3000);
 
-        // EXTRACT ONLY MATCHING SHORTS
-        const shorts = await page
-          .locator("a")
-          .evaluateAll((els, creatorKeywordMap) => {
-            const results = [];
+        const processedUrls = new Set();
+        const matchingShorts = [];
 
-            els.forEach((a) => {
-              const href = a.href;
+        let stopScrolling = false;
+        let noNewContentCount = 0;
 
-              const isInvalidRoot = href === "https://www.youtube.com/shorts/";
+        let scrollCount = 0;
+        const MAX_SCROLLS = 100;
 
-              if (href && href.includes("/shorts/") && !isInvalidRoot) {
-                const className = a.getAttribute("class") || "";
+        let noKeywordMatchScrolls = 0;
+        const MAX_NO_MATCH_SCROLLS = 30;
 
-                // ONLY VALID SHORTS CARDS
-                if (
-                  className.includes(
-                    "shortsLockupViewModelHostOutsideMetadataEndpoint",
-                  )
-                ) {
-                  const caption = a.getAttribute("title")?.trim() || "";
+        while (!stopScrolling && scrollCount < MAX_SCROLLS) {
+          scrollCount++;
 
-                  // KEYWORD MATCH
-                  const matchedCreators = creatorKeywordMap
-                    .filter((creatorObj) =>
-                      creatorObj.keywords.some((keyword) =>
-                        caption.toLowerCase().includes(keyword),
-                      ),
+          console.log(`${channel}: Scroll ${scrollCount}/${MAX_SCROLLS}`);
+          const discoveredShorts = await page
+            .locator("a")
+            .evaluateAll((els) => {
+              const results = [];
+
+              els.forEach((a) => {
+                const href = a.href;
+
+                const isInvalidRoot =
+                  href === "https://www.youtube.com/shorts/";
+
+                if (href && href.includes("/shorts/") && !isInvalidRoot) {
+                  const className = a.getAttribute("class") || "";
+
+                  // SAME LOGIC AS YoutubeShort
+                  if (
+                    className.includes(
+                      "shortsLockupViewModelHostOutsideMetadataEndpoint",
                     )
-                    .map((creatorObj) => creatorObj.creator);
-
-                  if (!matchedCreators.length) return;
-
-                  results.push({
-                    url: href.split("?")[0],
-                    caption,
-                    creators: matchedCreators,
-                  });
+                  ) {
+                    results.push({
+                      url: href.split("?")[0],
+                      caption: a.getAttribute("title")?.trim() || "",
+                    });
+                  }
                 }
-              }
+              });
+
+              return results.filter(
+                (item, index, self) =>
+                  index === self.findIndex((x) => x.url === item.url),
+              );
             });
 
-            // REMOVE DUPLICATES
-            return results.filter(
-              (item, index, self) =>
-                index === self.findIndex((x) => x.url === item.url),
-            );
-          }, creatorKeywordMap);
+          const newShorts = discoveredShorts.filter(
+            (x) => !processedUrls.has(x.url),
+          );
 
-        console.log(shorts);
+          if (!newShorts.length) {
+            noNewContentCount++;
+
+            if (noNewContentCount >= 3) {
+              console.log(`${channel}: No new shorts found after 3 attempts`);
+              break;
+            }
+          } else {
+            noNewContentCount = 0;
+          }
+
+          // mark all as processed
+          newShorts.forEach((short) => {
+            processedUrls.add(short.url);
+          });
+
+          // only keep keyword matching shorts
+          const keywordMatchedShorts = newShorts.filter((short) => {
+            const caption = (short.caption || "").trim().toLowerCase();
+
+            if (!caption) return false;
+
+            return CREATOR_LOOKUP.some((creator) =>
+              creator.allKeywords.some((keyword) => caption.includes(keyword)),
+            );
+          });
+
+          if (keywordMatchedShorts.length === 0) {
+            noKeywordMatchScrolls++;
+
+            console.log(
+              `${channel}: No keyword matches (${noKeywordMatchScrolls}/${MAX_NO_MATCH_SCROLLS})`,
+            );
+          } else {
+            noKeywordMatchScrolls = 0;
+          }
+
+          if (noKeywordMatchScrolls >= MAX_NO_MATCH_SCROLLS) {
+            console.log(
+              `${channel}: No keyword matches found after ${MAX_NO_MATCH_SCROLLS} consecutive scrolls. Skipping channel.`,
+            );
+
+            break;
+          }
+
+          console.log(
+            `${channel}: ${newShorts.length} new shorts, ${keywordMatchedShorts.length} keyword matches`,
+          );
+
+          let oldShortsCount = 0;
+
+          for (const short of keywordMatchedShorts) {
+            processedUrls.add(short.url);
+
+            let shortPage;
+
+            try {
+              shortPage = await browser.newPage();
+
+              await shortPage.goto(short.url, {
+                waitUntil: "domcontentloaded",
+                timeout: 60000,
+              });
+
+              await shortPage.waitForTimeout(1000);
+
+              const shortInfo = await shortPage.evaluate(() => {
+                const player = window.ytInitialPlayerResponse;
+
+                const micro = player?.microformat?.playerMicroformatRenderer;
+
+                return {
+                  publishDate: micro?.publishDate || micro?.uploadDate || null,
+                };
+              });
+
+              if (!shortInfo?.publishDate) {
+                continue;
+              }
+
+              const shortDate = new Date(shortInfo.publishDate);
+
+              if (shortDate < fromDate) {
+                oldShortsCount++;
+              }
+
+              const caption = (short.caption || "").toLowerCase();
+
+              const matchedCreators = CREATOR_LOOKUP.filter((creator) =>
+                creator.allKeywords.some((keyword) =>
+                  caption.includes(keyword),
+                ),
+              ).map((creator) => creator.name);
+
+              if (!matchedCreators.length) {
+                continue;
+              }
+              if (shortDate >= fromDate && shortDate <= toDate) {
+                const shortData = {
+                  creators: matchedCreators,
+                  url: short.url,
+                  caption: short.caption,
+                  publishDate: shortInfo.publishDate,
+                  channel,
+                };
+
+                matchingShorts.push(shortData);
+
+                for (const creatorName of matchedCreators) {
+                  const bucket = creatorCache[creatorName];
+
+                  if (!bucket) continue;
+
+                  if (!bucket.seenPosts) {
+                    bucket.seenPosts = new Set();
+                  }
+
+                  if (bucket.seenPosts.has(short.url)) {
+                    continue;
+                  }
+
+                  bucket.seenPosts.add(short.url);
+
+                  bucket.data.push(shortData);
+
+                  bucket.totalPosts++;
+                }
+              }
+            } catch (err) {
+              console.log("Short error:", err.message);
+            } finally {
+              if (shortPage) {
+                await shortPage.close();
+              }
+            }
+          }
+
+          console.log(`${channel}: Matched ${matchingShorts.length} Shorts`);
+
+          if (
+            keywordMatchedShorts.length > 0 &&
+            oldShortsCount >=
+              Math.max(3, Math.floor(keywordMatchedShorts.length * 0.7))
+          ) {
+            console.log(`${channel}: Reached date range limit`);
+
+            stopScrolling = true;
+            break;
+          }
+
+          await page.mouse.wheel(0, 15000);
+
+          await page.waitForTimeout(2000);
+        }
+
+        if (scrollCount >= MAX_SCROLLS) {
+          console.log(`${channel}: Reached max scroll limit (${MAX_SCROLLS})`);
+        }
 
         await page.close();
-
-        allYoutubeShortsData.push({
-          channel,
-
-          scrapedAt: new Date(),
-
-          totalShorts: shorts.length,
-
-          data: shorts,
-        });
       } catch (err) {
         console.log(err);
-
-        allYoutubeShortsData.push({
-          channel,
-          error: err.message,
-        });
       }
     }
 
-    const creatorBuckets = {};
+    const creatorResults = Object.values(creatorCache).map((creator) => ({
+      ...creator,
+      seenPosts: undefined,
+    }));
 
-    allYoutubeShortsData.forEach((account) => {
-      if (!account.data) return;
-
-      account.data.forEach((short) => {
-        short.creators.forEach((creatorName) => {
-          if (!creatorBuckets[creatorName]) {
-            creatorBuckets[creatorName] = {};
-          }
-
-          if (!creatorBuckets[creatorName][account.channel]) {
-            creatorBuckets[creatorName][account.channel] = {
-              channel: account.channel,
-              scrapedAt: account.scrapedAt,
-              totalShorts: 0,
-              data: [],
-            };
-          }
-
-          creatorBuckets[creatorName][account.channel].data.push({
-            url: short.url,
-            caption: short.caption,
-          });
-
-          creatorBuckets[creatorName][account.channel].totalShorts =
-            creatorBuckets[creatorName][account.channel].data.length;
-        });
+    for (const creator of creatorResults) {
+      await savePlatformData({
+        creatorName: creator.creator,
+        platform: "youtubeShorts",
+        posts: creator.data,
       });
-    });
-
-    const creatorData = Object.entries(creatorBuckets)
-      .map(([creatorName, channels]) => ({
-        creatorName,
-        totalAccounts: Object.keys(channels).length,
-        youtubeShorts: Object.values(channels),
-      }))
-      .filter((c) => c.totalAccounts > 0);
-
-    // SAVE TO DB
-    // await SocialDumpStore.findOneAndUpdate(
-    //   {
-    //     creatorName: creator,
-    //   },
-    //   {
-    //     $set: {
-    //       creatorName: creator,
-
-    //       youtubeShorts: allYoutubeShortsData,
-    //     },
-    //   },
-    //   {
-    //     upsert: true,
-
-    //     returnDocument: "after",
-    //   },
-    // );
+    }
 
     return res.json({
       success: true,
-      totalCreators: creatorData.length,
-      data: creatorData,
+      totalCreators: creatorResults.length,
+      data: creatorResults,
     });
   } catch (error) {
     console.log(error);
 
     return res.status(500).json({
       success: false,
-
       error: error.message,
     });
   } finally {
@@ -986,306 +978,113 @@ export const YoutubeShorts = async (req, res) => {
   }
 };
 
-// export const YoutubeShorts = async (req, res) => {
-//   const { creator } = req.params;
-//   const { channels, months = 1 } = req.body;
-
-//   if (!Array.isArray(channels) || channels.length === 0) {
-//     return res.status(400).json({
-//       success: false,
-//       error: "channels array required",
-//     });
-//   }
-
-//   let browser;
-
-//   try {
-//     browser = await chromium.launch({
-//       headless: false,
-//     });
-
-//     const creatorData = CREATOR_NAMES.find(
-//       (a) => a.name.toLowerCase() === creator.toLowerCase(),
-//     );
-
-//     const matchKeywords = [
-//       creator?.toLowerCase(),
-//       ...(creatorData?.keywords || []).map((k) => k.toLowerCase()),
-//     ].filter(Boolean);
-
-//     const toDate = new Date();
-
-//     const fromDate = new Date();
-//     fromDate.setMonth(fromDate.getMonth() - Number(months));
-
-//     console.log(
-//       `Filtering Shorts from ${fromDate.toISOString()} to ${toDate.toISOString()}`,
-//     );
-
-//     const allYoutubeShortsData = [];
-
-//     for (const channel of channels) {
-//       try {
-//         let shortsUrl = channel;
-
-//         if (channel.startsWith("@")) {
-//           shortsUrl = `https://www.youtube.com/${channel}/shorts`;
-//         } else if (!channel.startsWith("http")) {
-//           shortsUrl = `https://www.youtube.com/@${channel}/shorts`;
-//         }
-
-//         if (!shortsUrl.includes("/shorts")) {
-//           shortsUrl = shortsUrl.replace(/\/$/, "") + "/shorts";
-//         }
-
-//         console.log("Scraping:", shortsUrl);
-
-//         const page = await browser.newPage();
-
-//         await page.goto(shortsUrl, {
-//           waitUntil: "networkidle",
-//           timeout: 120000,
-//         });
-
-//         await page.setViewportSize({
-//           width: 1920,
-//           height: 4000,
-//         });
-
-//         await page.evaluate(() => {
-//           document.body.style.zoom = "30%";
-//         });
-
-//         await page.waitForTimeout(3000);
-
-//         const processedUrls = new Set();
-//         const matchingShorts = [];
-
-//         let stopScrolling = false;
-//         let noNewContentCount = 0;
-
-//         let scrollCount = 0;
-//         const MAX_SCROLLS = 100;
-
-//         let noKeywordMatchScrolls = 0;
-//         const MAX_NO_MATCH_SCROLLS = 30;
-
-//         while (!stopScrolling && scrollCount < MAX_SCROLLS) {
-//           scrollCount++;
-
-//           console.log(`${channel}: Scroll ${scrollCount}/${MAX_SCROLLS}`);
-//           const discoveredShorts = await page.evaluate(() => {
-//             const urls = [];
-
-//             document.querySelectorAll('a[href*="/shorts/"]').forEach((a) => {
-//               const href = a.href?.split("?")[0];
-
-//               if (
-//                 href &&
-//                 href.includes("/shorts/") &&
-//                 href !== "https://www.youtube.com/shorts/"
-//               ) {
-//                 urls.push({
-//                   url: href,
-//                   caption: (a.getAttribute("title") || "").trim(),
-//                 });
-//               }
-//             });
-
-//             return urls.filter(
-//               (item, index, self) =>
-//                 index === self.findIndex((x) => x.url === item.url),
-//             );
-//           });
-
-//           const newShorts = discoveredShorts.filter(
-//             (x) => !processedUrls.has(x.url),
-//           );
-
-//           if (!newShorts.length) {
-//             noNewContentCount++;
-
-//             if (noNewContentCount >= 3) {
-//               console.log(`${channel}: No new shorts found after 3 attempts`);
-//               break;
-//             }
-//           } else {
-//             noNewContentCount = 0;
-//           }
-
-//           // mark all as processed
-//           newShorts.forEach((short) => {
-//             processedUrls.add(short.url);
-//           });
-
-//           // only keep keyword matching shorts
-//           const keywordMatchedShorts = newShorts.filter((short) => {
-//             const caption = (short.caption || "").trim().toLowerCase();
-
-//             if (!caption) return false;
-
-//             return matchKeywords.some((keyword) => caption.includes(keyword));
-//           });
-
-//           if (keywordMatchedShorts.length === 0) {
-//             noKeywordMatchScrolls++;
-
-//             console.log(
-//               `${channel}: No keyword matches (${noKeywordMatchScrolls}/${MAX_NO_MATCH_SCROLLS})`,
-//             );
-//           } else {
-//             noKeywordMatchScrolls = 0;
-//           }
-
-//           if (noKeywordMatchScrolls >= MAX_NO_MATCH_SCROLLS) {
-//             console.log(
-//               `${channel}: No keyword matches found after ${MAX_NO_MATCH_SCROLLS} consecutive scrolls. Skipping channel.`,
-//             );
-
-//             break;
-//           }
-
-//           console.log(
-//             `${channel}: ${newShorts.length} new shorts, ${keywordMatchedShorts.length} keyword matches`,
-//           );
-
-//           let oldShortsCount = 0;
-
-//           for (const short of keywordMatchedShorts) {
-//             processedUrls.add(short.url);
-
-//             let shortPage;
-
-//             try {
-//               shortPage = await browser.newPage();
-
-//               await shortPage.goto(short.url, {
-//                 waitUntil: "domcontentloaded",
-//                 timeout: 60000,
-//               });
-
-//               await shortPage.waitForTimeout(1000);
-
-//               const shortInfo = await shortPage.evaluate(() => {
-//                 const player = window.ytInitialPlayerResponse;
-
-//                 const micro = player?.microformat?.playerMicroformatRenderer;
-
-//                 return {
-//                   publishDate: micro?.publishDate || micro?.uploadDate || null,
-//                 };
-//               });
-
-//               if (!shortInfo?.publishDate) {
-//                 continue;
-//               }
-
-//               const shortDate = new Date(shortInfo.publishDate);
-
-//               if (shortDate < fromDate) {
-//                 oldShortsCount++;
-//               }
-
-//               const caption = (short.caption || "").toLowerCase();
-
-//               const isKeywordMatch = matchKeywords.some((keyword) =>
-//                 caption.includes(keyword),
-//               );
-
-//               if (
-//                 isKeywordMatch &&
-//                 shortDate >= fromDate &&
-//                 shortDate <= toDate
-//               ) {
-//                 matchingShorts.push({
-//                   url: short.url,
-//                   caption: short.caption,
-//                   publishDate: shortInfo.publishDate,
-//                 });
-//               }
-//             } catch (err) {
-//               console.log("Short error:", err.message);
-//             } finally {
-//               if (shortPage) {
-//                 await shortPage.close();
-//               }
-//             }
-//           }
-
-//           console.log(`${channel}: Matched ${matchingShorts.length} Shorts`);
-
-//           if (
-//             keywordMatchedShorts.length > 0 &&
-//             oldShortsCount >=
-//               Math.max(3, Math.floor(keywordMatchedShorts.length * 0.7))
-//           ) {
-//             console.log(`${channel}: Reached date range limit`);
-
-//             stopScrolling = true;
-//             break;
-//           }
-
-//           await page.mouse.wheel(0, 15000);
-
-//           await page.waitForTimeout(2000);
-//         }
-
-//         if (scrollCount >= MAX_SCROLLS) {
-//           console.log(`${channel}: Reached max scroll limit (${MAX_SCROLLS})`);
-//         }
-
-//         await page.close();
-
-//         allYoutubeShortsData.push({
-//           channel,
-//           scrapedAt: new Date(),
-//           fromDate,
-//           toDate,
-//           totalShorts: matchingShorts.length,
-//           data: matchingShorts,
-//         });
-//       } catch (err) {
-//         console.log(err);
-
-//         allYoutubeShortsData.push({
-//           channel,
-//           error: err.message,
-//         });
-//       }
-//     }
-
-//     await SocialDumpStore.findOneAndUpdate(
-//       {
-//         creatorName: creator,
-//       },
-//       {
-//         $set: {
-//           creatorName: creator,
-//           youtubeShorts: allYoutubeShortsData,
-//         },
-//       },
-//       {
-//         upsert: true,
-//         returnDocument: "after",
-//       },
-//     );
-
-//     return res.json({
-//       success: true,
-//       months,
-//       totalAccounts: allYoutubeShortsData.length,
-//       data: allYoutubeShortsData,
-//     });
-//   } catch (error) {
-//     console.log(error);
-
-//     return res.status(500).json({
-//       success: false,
-//       error: error.message,
-//     });
-//   } finally {
-//     if (browser) {
-//       await browser.close();
-//     }
-//   }
-// };
+// ─── YOUTUBE & INSTAGRAM: SUBSCRIBER & FOLLOWER COUNTS ────────────────────────────────────────
+
+export async function syncCreatorFollowers() {
+  const browser = await chromium.launch({
+    headless: true,
+  });
+
+  const page = await browser.newPage({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/137.0.0.0 Safari/537.36",
+  });
+
+  try {
+    for (const creator of CREATOR_NAMES) {
+      try {
+        let instagramFollowers = 0;
+        let youtubeSubscribers = null;
+
+        // ----------------------------------
+        // Instagram Followers
+        // ----------------------------------
+        const instagramHandle = creator.instagram || null;
+
+        if (instagramHandle) {
+          try {
+            const response = await rapidApiFetch(
+              "https://instagram120.p.rapidapi.com/api/instagram/userInfo",
+              {
+                method: "POST",
+                headers: {
+                  "x-rapidapi-host": "instagram120.p.rapidapi.com",
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  username: instagramHandle,
+                }),
+              },
+            );
+
+            const data = await response.json();
+
+            instagramFollowers = data?.result?.[0]?.user?.follower_count || 0;
+          } catch (err) {
+            console.log(`${creator.name} instagram failed`, err.message);
+          }
+        }
+
+        // ----------------------------------
+        // Youtube Subscribers
+        // ----------------------------------
+        const youtubeHandle = creator.channelName || null;
+
+        if (youtubeHandle) {
+          try {
+            await page.goto(`https://www.youtube.com/${youtubeHandle}`, {
+              waitUntil: "networkidle",
+              timeout: 60000,
+            });
+
+            await page.waitForTimeout(2000);
+
+            youtubeSubscribers = await page
+              .locator('span[aria-label*="subscribers"]')
+              .first()
+              .textContent();
+
+            youtubeSubscribers =
+              youtubeSubscribers?.trim()?.split(/\s+/)[0] || null;
+          } catch (err) {
+            console.log(`${creator.name} youtube failed`, err.message);
+          }
+        }
+
+        // ----------------------------------
+        // Update Existing Creator Config
+        // ----------------------------------
+        await SocialDumpStore.findOneAndUpdate(
+          {
+            creatorName: creator.name,
+          },
+          {
+            $set: {
+              instaFCount: instagramFollowers,
+              youtubeFCount: youtubeSubscribers,
+            },
+          },
+          {
+            returnDocument: "after",
+          },
+        );
+
+        console.log(`${creator.name} updated`, {
+          instagramFollowers,
+          youtubeSubscribers,
+        });
+
+        await sleep(1000);
+      } catch (err) {
+        console.log(`${creator.name} failed`, err.message);
+      }
+    }
+
+    console.log("Creator follower sync completed");
+  } catch (err) {
+    console.log("Follower sync failed", err);
+    throw err;
+  } finally {
+    await browser.close();
+  }
+}

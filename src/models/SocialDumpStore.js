@@ -1,5 +1,27 @@
 import mongoose from "mongoose";
 
+const PlatformStateSchema = new mongoose.Schema(
+  {
+    bootstrapCompleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    lastScrapedAt: {
+      type: Date,
+      default: null,
+    },
+
+    latestPostDate: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  },
+);
+
 const SocialDumpSchema = new mongoose.Schema(
   {
     creatorName: {
@@ -7,43 +29,32 @@ const SocialDumpSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
-    instaPageName: { type: String, trim: true },
-    facebookPage: {
-      type: String,
-      trim: true,
-    },
-    youtubeHandle: {
-      type: String,
-      trim: true,
-    },
+
     instaFCount: {
       type: Number,
       default: 0,
     },
+
     youtubeFCount: {
-      type: Number,
-      default: 0,
-    },
-
-    instagram: {
-      type: mongoose.Schema.Types.Mixed,
-
+      type: String,
       default: null,
     },
-    facebook: {
-      type: mongoose.Schema.Types.Mixed,
 
-      default: null,
-    },
-    youtube: {
-      type: mongoose.Schema.Types.Mixed,
+    platformState: {
+      instagram: {
+        type: PlatformStateSchema,
+        default: () => ({}),
+      },
 
-      default: null,
-    },
-    youtubeShorts: {
-      type: mongoose.Schema.Types.Mixed,
+      twitter: {
+        type: PlatformStateSchema,
+        default: () => ({}),
+      },
 
-      default: null,
+      youtubeShorts: {
+        type: PlatformStateSchema,
+        default: () => ({}),
+      },
     },
   },
   {

@@ -11,6 +11,13 @@ import scraperRoutes from "./routes/scraperRoutes.js";
 import normalizeCreator from "./routes/normalizeCreator.js";
 
 import { syncNewsFeed } from "./service/newsFetcher.js";
+import { syncInstagramMedia } from "./utils/mediaCDNWorker.js";
+import {
+  InstagramPosts,
+  syncCreatorFollowers,
+  TwitterPosts,
+  YoutubeShorts,
+} from "./scraper/socialMediaScraper.js";
 
 dotenv.config();
 
@@ -105,14 +112,87 @@ app.listen(port || 3000, "0.0.0.0", () => {
   console.log("Server running!!", port);
 });
 
-setInterval(
-  async () => {
-    try {
-      await syncNewsFeed();
-    } catch (error) {
-      console.error("syncNewsFeed error:", error);
-    }
-  },
-  1000 * 60 * 60 * 24,
-);
+// ----------- Daily Scheduler (6AM) --------------
+
+const runDailyAt6AM = () => {
+  const now = new Date();
+
+  const nextRun = new Date();
+  nextRun.setHours(6, 0, 0, 0);
+
+  // If it's already past 6 AM today, schedule for tomorrow
+  if (now >= nextRun) {
+    nextRun.setDate(nextRun.getDate() + 1);
+    console.log("next day 6 am job set");
+  }
+
+  const initialDelay = nextRun.getTime() - now.getTime();
+
+  setTimeout(() => {
+    const executeJob = async () => {
+      try {
+        await syncNewsFeed();
+        await YoutubeShorts();
+        await InstagramPosts();
+        await TwitterPosts();
+      } catch (error) {
+        console.error("syncNewsFeed error:", error);
+      }
+    };
+
+    // Run immediately at 6 AM
+    executeJob();
+
+    // Then run every 24 hours
+    setInterval(executeJob, 24 * 60 * 60 * 1000);
+  }, initialDelay);
+};
+
+runDailyAt6AM();
+
+// ----------- Weekly Scheduler (6AM) --------------
+
+const runEveryFridayAt6AM = () => {
+  const now = new Date();
+
+  const nextRun = new Date();
+  nextRun.setHours(6, 0, 0, 0);
+
+  // Calculate days until next Friday (Friday = 5)
+  const daysUntilFriday = (5 - now.getDay() + 7) % 7;
+
+  nextRun.setDate(now.getDate() + daysUntilFriday);
+
+  // If it's already past 6 AM on Friday, schedule for next Friday
+  if (daysUntilFriday === 0 && now >= nextRun) {
+    nextRun.setDate(nextRun.getDate() + 7);
+    console.log("next Friday 6 AM job set");
+  }
+
+  const initialDelay = nextRun.getTime() - now.getTime();
+
+  setTimeout(() => {
+    const executeWeeklyJob = async () => {
+      try {
+        await syncCreatorFollowers();
+      } catch (error) {
+        console.error("Weekly job error:", error);
+      }
+    };
+
+    // Run at the scheduled Friday 6 AM
+    executeWeeklyJob();
+
+    // Then every 7 days
+    setInterval(executeWeeklyJob, 7 * 24 * 60 * 60 * 1000);
+  }, initialDelay);
+};
+
+runEveryFridayAt6AM();
+
+// ----------- Testing function calls --------------
+
 // await syncNewsFeed();
+// syncInstagramMedia().catch(console.error);
+// await syncCreatorFollowers();
+await YoutubeShorts();

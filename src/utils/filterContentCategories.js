@@ -1,4 +1,8 @@
-import { NEWS_KEYWORDS } from "../constants/keywords.js";
+import {
+  BLOCKED_WORDS,
+  HANDLES,
+  NEWS_KEYWORDS,
+} from "../constants/keywords.js";
 
 const NEWS_SOURCES = [
   "aajtak",
@@ -247,8 +251,348 @@ export function getCategory(item) {
   }
 
   // ============================================
-  // 6. Everything else = FUN
+  // 6. Everything else = lifestyle
   // ============================================
 
-  return "fun";
+  return "lifestyle";
 }
+
+/**
+ * Extract trending topic labels from a list of posts.
+ * Count always equals the number of posts that will actually appear
+ * when filtering by that topic.
+ */
+
+const STOP_WORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "but",
+  "in",
+  "on",
+  "at",
+  "to",
+  "for",
+  "of",
+  "with",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "shall",
+  "i",
+  "you",
+  "he",
+  "she",
+  "it",
+  "we",
+  "they",
+  "me",
+  "him",
+  "her",
+  "us",
+  "them",
+  "this",
+  "that",
+  "these",
+  "those",
+  "my",
+  "your",
+  "his",
+  "its",
+  "our",
+  "their",
+  "what",
+  "which",
+  "who",
+  "how",
+  "when",
+  "where",
+  "why",
+  "not",
+  "no",
+  "yes",
+  "so",
+  "if",
+  "as",
+  "by",
+  "up",
+  "out",
+  "from",
+  "into",
+  "just",
+  "also",
+  "very",
+  "all",
+  "some",
+  "any",
+  "can",
+  "new",
+  "one",
+  "two",
+  "more",
+  "get",
+  "got",
+  "like",
+  "go",
+  "going",
+  "come",
+  "see",
+  "know",
+  "think",
+  "time",
+  "day",
+  "now",
+  "back",
+  "want",
+  "make",
+  "use",
+  "take",
+  "give",
+  "good",
+  "great",
+  "really",
+  "much",
+  "re",
+  "ve",
+  "ll",
+  "t",
+  "s",
+  "d",
+  "m",
+  "amp",
+  "https",
+  "http",
+  "www",
+]);
+
+/**
+ * Check whether a post matches a given topic slug.
+ */
+export const postMatchesTopic = (post, slug) => {
+  if (!slug || slug === "all") return true;
+
+  const target = String(slug).toLowerCase().trim();
+
+  const normalizeTopic = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "");
+
+  /* hashtags array */
+  if (Array.isArray(post.hashtags)) {
+    if (
+      post.hashtags.some(
+        (tag) => normalizeTopic(String(tag).replace(/^#/, "")) === target,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  /* category */
+  if (normalizeTopic(post.category) === target) {
+    return true;
+  }
+
+  /* topic */
+  if (normalizeTopic(post.topic) === target) {
+    return true;
+  }
+
+  /* inline hashtags */
+  const text = `${post.text || ""} ${post.caption || ""} ${post.title || ""}`;
+
+  const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
+
+  if (
+    inlineHashtags.some(
+      (tag) => normalizeTopic(tag.replace(/^#/, "")) === target,
+    )
+  ) {
+    return true;
+  }
+
+  /* fallback text match */
+  const searchableText = text.toLowerCase();
+
+  const escapedSlug = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const wordBoundaryRegex = new RegExp(
+    `(^|\\W)${escapedSlug.replace(/_/g, "[\\s_]+")}(\\W|$)`,
+    "i",
+  );
+
+  return wordBoundaryRegex.test(searchableText);
+};
+
+export const extractTopics = (creatorName, posts = []) => {
+  const freq = {};
+
+  posts.forEach((post) => {
+    const creator = creatorName
+      ? creatorName.toLowerCase().split("_").join("")?.replace(/^@/, "").trim()
+      : null;
+
+    const creatorFirstName = creatorName
+      ? creatorName.toLowerCase().split("_")[0]?.replace(/^@/, "").trim()
+      : null;
+
+    const creatorLastName = creatorName
+      ? creatorName.toLowerCase().split("_")[1]?.replace(/^@/, "").trim()
+      : null;
+
+    const creatorHandles = HANDLES[creatorName];
+    const blockedWords = BLOCKED_WORDS;
+
+    const blockedTerms = new Set(
+      [
+        post.account,
+        post.author,
+        post.creator,
+        post.username,
+        post.handle,
+        creator,
+        creatorFirstName,
+        creatorLastName,
+        ...creatorHandles,
+        ...blockedWords,
+      ]
+        .filter(Boolean)
+        .map((v) => v.toLowerCase().replace(/^@/, "").trim()),
+    );
+
+    let text = `${post.text || ""} ${post.caption || ""} ${post.title || ""}`;
+
+    blockedTerms.forEach((term) => {
+      if (!term) return;
+
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      text = text
+        .replace(new RegExp(`@${escaped}`, "gi"), "")
+        .replace(new RegExp(`\\b${escaped}\\b`, "gi"), "");
+    });
+
+    const postTopics = new Map();
+
+    const addPostTopic = (slug, label, isHashtag = false) => {
+      if (!slug) return;
+
+      slug = slug.toLowerCase().trim();
+
+      if (
+        slug.length < 2 ||
+        slug.length > 30 ||
+        STOP_WORDS.has(slug) ||
+        blockedTerms.has(slug)
+      ) {
+        return;
+      }
+
+      const existing = postTopics.get(slug);
+
+      postTopics.set(slug, {
+        label: existing?.label || label,
+        isHashtag: existing?.isHashtag || isHashtag,
+      });
+    };
+
+    /* hashtags array */
+    if (Array.isArray(post.hashtags)) {
+      post.hashtags.forEach((tag) => {
+        const clean = String(tag).replace(/^#/, "").toLowerCase().trim();
+
+        if (clean) {
+          addPostTopic(clean, `#${clean}`, true);
+        }
+      });
+    }
+
+    /* inline hashtags */
+    const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
+
+    inlineHashtags.forEach((tag) => {
+      const clean = tag.replace(/^#/, "").toLowerCase();
+
+      addPostTopic(clean, `#${clean}`, true);
+    });
+
+    /* count each topic once per post */
+    postTopics.forEach((topic, slug) => {
+      if (!freq[slug]) {
+        freq[slug] = {
+          label: topic.label,
+          count: 0,
+          isHashtag: topic.isHashtag,
+        };
+      }
+
+      freq[slug].count += 1;
+
+      if (topic.isHashtag) {
+        freq[slug].isHashtag = true;
+      }
+    });
+  });
+
+  Object.entries(freq).forEach(([slug, value]) => {
+    const actualPostCount = posts.filter((post) =>
+      postMatchesTopic(post, slug),
+    ).length;
+
+    posts.forEach((post) => {
+      if (postMatchesTopic(post, slug)) {
+        post.topic = slug;
+        post.topicMeta = {
+          slug,
+          label: value.label,
+          isHashtag: value.isHashtag,
+          count: actualPostCount,
+        };
+      }
+    });
+  });
+
+  return posts;
+};
+
+export const addTopicsToPosts = (creatorName, posts = []) => {
+  if (!Array.isArray(posts) || posts.length === 0) {
+    return [];
+  }
+
+  // Get ranked topics using your existing logic
+  const topics = extractTopics(creatorName, posts, 12);
+
+  return posts.map((post) => {
+    const matchedTopic = topics.find((topic) =>
+      postMatchesTopic(post, topic.slug),
+    );
+
+    return {
+      ...post,
+      topic: matchedTopic
+        ? matchedTopic.slug
+        : post.topic || post.category || "general",
+    };
+  });
+};
