@@ -109,6 +109,7 @@ function normaliseInstagram(igAccounts = []) {
 
       text: caption,
       caption,
+      normalizedText: normalizeText(caption),
 
       hashtags: cleanHashtags(p.hashtags),
 
@@ -148,6 +149,7 @@ function normaliseYouTubeShorts(shortChannels = []) {
         ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
         : null,
       caption: safe(p.caption),
+      normalizedText: normalizeText(p.caption),
     });
   }
   return posts;
@@ -920,6 +922,7 @@ export function normaliseCreator(
     : [];
   for (const n of news) {
     n.platform = "news";
+    n.normalizedText = normalizeText(n.title + n.description + n.content);
   }
 
   let allPosts = [...instagram, ...youtubeShorts, ...twitter, ...news];
@@ -930,7 +933,7 @@ export function normaliseCreator(
   }
   // assign topics then
   allPosts = addTopicsToPosts(merged.creatorName, allPosts);
-
+  // console.log(allPosts.filter((f) => !f.topic));
   instagram = allPosts.filter((f) => f.platform == "instagram");
 
   youtubeShorts = allPosts.filter((f) => f.platform == "youtube_shorts");

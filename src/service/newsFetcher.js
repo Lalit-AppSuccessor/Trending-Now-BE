@@ -9,7 +9,7 @@ import {
   HAPPENING_KEYWORDS,
 } from "../constants/keywords.js";
 
-const NEWS_API_CHUNK_SIZE = 10;
+const NEWS_API_CHUNK_SIZE = 1;
 const CURRENTS_CHUNK_SIZE = 1;
 
 function chunkArray(array, size) {
@@ -147,7 +147,7 @@ export async function syncNewsFeed() {
           .map((term) => `"${term}"`)
           .join(" OR ");
 
-        const q = `(${creatorQuery}) AND (youtube OR instagram OR influencer OR news)`;
+        const q = `(${creatorQuery})`;
 
         console.log("currents:", q);
 
@@ -208,7 +208,7 @@ export async function syncNewsFeed() {
           .join(" OR ");
 
         const q = `(${creatorQuery}) AND (youtube OR influencer OR creator OR instagram)`;
-
+        console.log(q, "newsapi query");
         const response = await axios.get("https://newsapi.org/v2/everything", {
           params: {
             q,
@@ -290,9 +290,19 @@ export async function syncNewsFeed() {
         let score = 0;
 
         for (const term of searchTerms) {
-          if (searchableText.includes(term)) {
-            score += term.length > 15 ? 5 : 2;
+          const searchableWords = new Set(
+            searchableText.toLowerCase().split(/\W+/),
+          );
+
+          const matches = term
+            .toLowerCase()
+            .split(/\s+/)
+            .every((word) => searchableWords.has(word));
+
+          if (matches) {
+            score += term.length > 10 ? 8 : 4;
           }
+          // console.log(matches, term.length);
         }
 
         if (score > 0) {

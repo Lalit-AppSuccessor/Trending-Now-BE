@@ -383,6 +383,16 @@ const STOP_WORDS = new Set([
   "www",
 ]);
 
+const normalizeText = (text = "") =>
+  text
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/@\w+/g, "")
+    .replace(/#\w+/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 /**
  * Check whether a post matches a given topic slug.
  */
@@ -397,6 +407,23 @@ export const postMatchesTopic = (post, slug) => {
       .replace(/\s+/g, "_")
       .replace(/[^a-z0-9_]/g, "");
 
+  const text = `${post.text || ""} ${post.caption || ""} ${post.title || ""} ${post.content || ""} ${post.description || ""} ${post.normalizedText || ""}`;
+
+  const searchableText = normalizeText(text);
+
+  const escapedSlug = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const wordBoundaryRegex = new RegExp(
+    `(^|\\W)${escapedSlug.replace(/_/g, "[\\s_]+")}(\\W|$)`,
+    "i",
+  );
+
+  const wordCheck = wordBoundaryRegex.test(searchableText);
+
+  if (wordCheck) {
+    return true;
+  }
+
   /* hashtags array */
   if (Array.isArray(post.hashtags)) {
     if (
@@ -408,19 +435,12 @@ export const postMatchesTopic = (post, slug) => {
     }
   }
 
-  /* category */
-  if (normalizeTopic(post.category) === target) {
-    return true;
-  }
-
   /* topic */
   if (normalizeTopic(post.topic) === target) {
     return true;
   }
 
   /* inline hashtags */
-  const text = `${post.text || ""} ${post.caption || ""} ${post.title || ""}`;
-
   const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
 
   if (
@@ -430,18 +450,7 @@ export const postMatchesTopic = (post, slug) => {
   ) {
     return true;
   }
-
-  /* fallback text match */
-  const searchableText = text.toLowerCase();
-
-  const escapedSlug = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  const wordBoundaryRegex = new RegExp(
-    `(^|\\W)${escapedSlug.replace(/_/g, "[\\s_]+")}(\\W|$)`,
-    "i",
-  );
-
-  return wordBoundaryRegex.test(searchableText);
+  return false;
 };
 
 export const extractTopics = (creatorName, posts = []) => {
@@ -480,7 +489,7 @@ export const extractTopics = (creatorName, posts = []) => {
         .map((v) => v.toLowerCase().replace(/^@/, "").trim()),
     );
 
-    let text = `${post.text || ""} ${post.caption || ""} ${post.title || ""}`;
+    let text = `${post.text || ""} ${post.caption || ""} ${post.title || ""} ${post.content || ""} ${post.description || ""} ${post.normalizedText || ""}`;
 
     blockedTerms.forEach((term) => {
       if (!term) return;
@@ -500,7 +509,7 @@ export const extractTopics = (creatorName, posts = []) => {
       slug = slug.toLowerCase().trim();
 
       if (
-        slug.length < 2 ||
+        slug.length < 4 ||
         slug.length > 30 ||
         STOP_WORDS.has(slug) ||
         blockedTerms.has(slug)
@@ -521,7 +530,7 @@ export const extractTopics = (creatorName, posts = []) => {
       post.hashtags.forEach((tag) => {
         const clean = String(tag).replace(/^#/, "").toLowerCase().trim();
 
-        if (clean) {
+        if (clean && clean.length > 4) {
           addPostTopic(clean, `#${clean}`, true);
         }
       });
@@ -532,11 +541,13 @@ export const extractTopics = (creatorName, posts = []) => {
 
     inlineHashtags.forEach((tag) => {
       const clean = tag.replace(/^#/, "").toLowerCase();
-
+      if (clean.length <= 4) {
+        return;
+      }
       addPostTopic(clean, `#${clean}`, true);
     });
 
-    /* count each topic once per post */
+    /* count each topic per post */
     postTopics.forEach((topic, slug) => {
       if (!freq[slug]) {
         freq[slug] = {
@@ -554,22 +565,26 @@ export const extractTopics = (creatorName, posts = []) => {
     });
   });
 
-  Object.entries(freq).forEach(([slug, value]) => {
-    const actualPostCount = posts.filter((post) =>
-      postMatchesTopic(post, slug),
-    ).length;
+  posts.forEach((post) => {
+    let bestTopic = null;
 
-    posts.forEach((post) => {
+    Object.entries(freq).forEach(([slug, value]) => {
       if (postMatchesTopic(post, slug)) {
-        post.topic = slug;
-        post.topicMeta = {
-          slug,
-          label: value.label,
-          isHashtag: value.isHashtag,
-          count: actualPostCount,
-        };
+        if (!bestTopic || value.count > bestTopic.count) {
+          bestTopic = {
+            slug,
+            label: value.label,
+            isHashtag: value.isHashtag,
+            count: value.count,
+          };
+        }
       }
     });
+
+    if (bestTopic) {
+      post.topic = bestTopic.slug;
+      post.topicMeta = bestTopic;
+    }
   });
 
   return posts;
@@ -580,19 +595,5 @@ export const addTopicsToPosts = (creatorName, posts = []) => {
     return [];
   }
 
-  // Get ranked topics using your existing logic
-  const topics = extractTopics(creatorName, posts, 12);
-
-  return posts.map((post) => {
-    const matchedTopic = topics.find((topic) =>
-      postMatchesTopic(post, topic.slug),
-    );
-
-    return {
-      ...post,
-      topic: matchedTopic
-        ? matchedTopic.slug
-        : post.topic || post.category || "general",
-    };
-  });
+  return extractTopics(creatorName, posts);
 };
