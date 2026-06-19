@@ -185,7 +185,7 @@ const runEveryFridayAt6AM = () => {
   }, initialDelay);
 };
 
-runEveryFridayAt6AM();
+// runEveryFridayAt6AM();
 
 // ----------- Testing function calls --------------
 
