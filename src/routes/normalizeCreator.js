@@ -3,6 +3,8 @@ import { normaliseCreator } from "../utils/normalizer.js";
 import SocialDumpStore from "../models/SocialDumpStore.js";
 import ArticleStore from "../models/ArticleStore.js";
 import SocialAllDump from "../models/SocialAllDump.js";
+import { CACHING_KEYS } from "../cache/cacheKeys.js";
+import { creatorPageFeed } from "../functions/creatorPageFeed.js";
 
 const router = express.Router();
 
@@ -12,35 +14,15 @@ router.get("/:creatorName", async (req, res) => {
     return;
   }
 
-  const creatorConfig = await SocialDumpStore.findOne({
-    creatorName: req.params.creatorName,
-  }).lean();
+  const creatorName = req.params.creatorName;
+  const key = CACHING_KEYS.CreatorPageFeedKey + creatorName;
 
-  const rawDoc = await SocialAllDump.find({
-    creatorName: req.params.creatorName,
-  })
-    .sort({
-      scrapeDate: -1,
-    })
-    .lean();
+  const response = await creatorPageFeed(key, creatorName);
 
-  const newsDoc = await ArticleStore.find({
-    creatorName: req.params.creatorName,
-  }).lean();
-
-  if (rawDoc.length === 0 && newsDoc.length === 0) {
-    return res.status(404).json({
-      success: false,
-      error: `Creator "${req.params.creatorName}" not found`,
-    });
+  if (!response.success) {
+    return res.status(500).json(response.error);
   }
-
-  const data = normaliseCreator(creatorConfig, rawDoc, newsDoc);
-
-  res.json({
-    success: true,
-    data,
-  });
+  return res.status(200).json(response.data);
 });
 
 export default router;

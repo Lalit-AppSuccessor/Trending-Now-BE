@@ -17,6 +17,7 @@ import {
   TwitterPosts,
   YoutubeShorts,
 } from "./scraper/socialMediaScraper.js";
+import { cacheWarming } from "./cache/cacheWarming.js";
 
 dotenv.config();
 
@@ -136,14 +137,16 @@ const runDailyAt6AM = () => {
         await creatorTrendScoreCalc();
       } catch (error) {
         console.error("syncNewsFeed error:", error);
+      } finally {
+        await cacheWarming();
       }
     };
 
     // Run immediately at 6 AM
     executeJob();
 
-    // Then run every 24 hours
-    setInterval(executeJob, 24 * 60 * 60 * 1000);
+    // Then run every 12 hours
+    setInterval(executeJob, 12 * 60 * 60 * 1000);
   }, initialDelay);
 };
 
@@ -190,6 +193,8 @@ const runEveryFridayAt6AM = () => {
 // runEveryFridayAt6AM();
 
 // ----------- Testing function calls --------------
+
+// await cacheWarming();
 
 // await syncNewsFeed();
 // syncInstagramMedia().catch(console.error);
