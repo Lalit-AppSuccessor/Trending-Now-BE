@@ -82,6 +82,7 @@ router.get("/homepage", async (req, res) => {
         creatorSlug: {
           name: creator.name,
           trendingScore: creator.trendingScore.toFixed(2),
+          image: creator.image,
         },
         topHeadline: topHeadline,
         topicSlug: topicSlug,
