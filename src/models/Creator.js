@@ -4,7 +4,6 @@ const CreatorSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-
       unique: true,
     },
 
@@ -12,42 +11,9 @@ const CreatorSchema = new mongoose.Schema(
       type: String,
     },
 
-    channelId: {
-      type: String,
-    },
-
-    image: {
-      type: String,
-    },
-
-    articleCount: {
-      type: Number,
-
-      default: 0,
-    },
-
-    breakingCount: {
-      type: Number,
-
-      default: 0,
-    },
-
     trendingScore: {
       type: Number,
-
       default: 0,
-    },
-
-    rss_feed: {
-      videoId: String,
-
-      title: String,
-
-      url: String,
-
-      thumbnail: String,
-
-      publishedAt: String,
     },
   },
   {

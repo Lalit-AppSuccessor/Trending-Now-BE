@@ -318,3 +318,99 @@ export const blockResources = async (page) => {
     return route.continue();
   });
 };
+
+// ==========================
+// GET YOUTUBE CHANNEL INFO
+// ==========================
+
+export async function getYoutubeChannelInfo(channelHandle) {
+  try {
+    const cleanHandle = channelHandle.replace("@", "").replace(/\s+/g, "");
+
+    const { data } = await axios.get(
+      `https://www.youtube.com/@${cleanHandle}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        },
+        timeout: 10000,
+      },
+    );
+
+    const channelIdMatch =
+      data.match(/"channelId":"(UC[^"]+)"/) ||
+      data.match(/"externalId":"(UC[^"]+)"/) ||
+      data.match(/https:\\\/\\\/www\.youtube\.com\\\/channel\\\/(UC[^\\"]+)/);
+
+    const avatarMatch = data.match(/"avatar":\{"thumbnails":\[(.*?)\]\}/);
+
+    let avatar = null;
+
+    if (avatarMatch?.[1]) {
+      const urls = [...avatarMatch[1].matchAll(/"url":"([^"]+)"/g)];
+
+      if (urls.length) {
+        avatar = urls[urls.length - 1][1];
+
+        avatar = avatar.replace(/\\u0026/g, "&");
+
+        avatar = avatar.replace(/=s\d+[^-]*/, "=s800");
+      }
+    }
+
+    return {
+      channelId: channelIdMatch?.[1] || null,
+      avatar,
+    };
+  } catch (error) {
+    console.log("channel info failed:", channelHandle);
+
+    return {
+      channelId: null,
+      avatar: null,
+    };
+  }
+}
+
+// ==========================
+// GET RSS VIDEO
+// ==========================
+
+export async function getLatestYoutubeVideo(channelId) {
+  try {
+    if (!channelId) return null;
+
+    const { data } = await axios.get(
+      `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`,
+      {
+        timeout: 10000,
+      },
+    );
+
+    const videoIdMatch = data.match(/<yt:videoId>(.*?)<\/yt:videoId>/);
+
+    const titleMatch = data.match(/<entry>[\s\S]*?<title>(.*?)<\/title>/);
+
+    const publishedMatch = data.match(/<published>(.*?)<\/published>/);
+
+    if (!videoIdMatch?.[1]) return null;
+
+    const videoId = videoIdMatch[1];
+
+    return {
+      videoId,
+
+      title: titleMatch?.[1] || "",
+
+      publishedAt: publishedMatch?.[1] || "",
+
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    };
+  } catch (error) {
+    console.log("rss failed:", channelId);
+
+    return null;
+  }
+}

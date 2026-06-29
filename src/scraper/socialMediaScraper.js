@@ -12,14 +12,19 @@ import {
   createCreatorCache,
   CREATOR_LOOKUP,
   extractMedia,
+  getLatestYoutubeVideo,
   getMatchedCreators,
   getPlatformScrapeConfig,
+  getYoutubeChannelInfo,
   keywords,
   savePlatformData,
   sleep,
 } from "../utils/scraperHelpers.js";
 import { syncInstagramMedia } from "../utils/mediaCDNWorker.js";
 import SocialDumpStore from "../models/SocialDumpStore.js";
+import Creator from "../models/Creator.js";
+import ArticleStore from "../models/ArticleStore.js";
+import SocialAllDump from "../models/SocialAllDump.js";
 
 dotenv.config();
 
@@ -1104,5 +1109,57 @@ export async function syncCreatorFollowers() {
     throw err;
   } finally {
     await browser.close();
+  }
+}
+
+export async function creatorTrendScoreCalc() {
+  try {
+    CREATOR_NAMES.map(async (f) => {
+      let score = 0;
+
+      const [articlesCount, socialPostsCount] = await Promise.all([
+        ArticleStore.countDocuments({
+          creatorName: f.name,
+        }),
+        SocialAllDump.aggregate([
+          {
+            $match: {
+              creatorName: f.name,
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              instagram: { $sum: { $size: "$instagram" } },
+              twitter: { $sum: { $size: "$twitter" } },
+              youtube: { $sum: { $size: "$youtubeShorts" } },
+            },
+          },
+        ]),
+      ]);
+
+      score = score + articlesCount * 10;
+      score = score + socialPostsCount[0].instagram * 6;
+      score = score + socialPostsCount[0].twitter * 8;
+      score = score + socialPostsCount[0].youtube * 4;
+
+      await Creator.findOneAndUpdate(
+        {
+          name: f.name,
+        },
+        {
+          name: f.name,
+          channelName: f.channel,
+          trendingScore: score,
+        },
+        {
+          upsert: true,
+          returnDocument: "after",
+        },
+      );
+    });
+  } catch (err) {
+    console.log("Creators ScoreCalc failed", err);
+    throw err;
   }
 }

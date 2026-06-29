@@ -2,64 +2,98 @@ import express from "express";
 import jwt from "jsonwebtoken";
 
 import Article from "../models/ArticleStore.js";
-import Creator from "../models/CreatorArticle.js";
+import Creator from "../models/Creator.js";
 import User from "../models/User.js";
+import { normaliseCreator } from "../utils/normalizer.js";
+import SocialDumpStore from "../models/SocialDumpStore.js";
+import SocialAllDump from "../models/SocialAllDump.js";
+import ArticleStore from "../models/ArticleStore.js";
+import { collectPosts, StackPostMaker } from "../utils/feedHelper.js";
 
 const router = express.Router();
 
 // FEED API
-router.get("/feed", async (req, res) => {
+router.get("/homepage", async (req, res) => {
   try {
-    const breakingNews = await Article.find({
-      isBreaking: true,
-    })
-      .sort({
-        publishedAt: -1,
+    const topInfluencers = await Creator.find().sort({
+      trendingScore: -1,
+    });
+
+    let posts = [];
+
+    for (const creator of topInfluencers) {
+      const topics = {};
+
+      const creatorConfig = await SocialDumpStore.findOne({
+        creatorName: creator.name,
+      }).lean();
+
+      const rawDoc = await SocialAllDump.find({
+        creatorName: creator.name,
       })
-      .limit(20);
+        .sort({
+          scrapeDate: -1,
+        })
+        .lean();
 
-    const normalNews = await Article.find({
-      isBreaking: false,
-    })
-      .sort({
-        publishedAt: -1,
-      })
-      .limit(50);
+      const newsDoc = await ArticleStore.find({
+        creatorName: creator.name,
+      }).lean();
 
-    const happeningNews = await Article.find({
-      isAlsoHappening: true,
-    })
-      .sort({
-        publishedAt: -1,
-      })
-      .limit(50);
+      if (rawDoc.length === 0 && newsDoc.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: `Creator "${creator.name}" not found`,
+        });
+      }
 
-    const topInfluencers = await Creator.find()
-      .sort({
-        trendingScore: -1,
-      })
-      .limit(10);
+      const data = normaliseCreator(creatorConfig, rawDoc, newsDoc);
 
-    const avgTrendingScore =
-      normalNews.reduce((sum, item) => sum + (item.trendingScore || 0), 0) /
-      (normalNews.length || 1);
+      const allposts = collectPosts(data);
 
-    const topNewsRankCard = normalNews.filter(
-      (item) => item.trendingScore >= avgTrendingScore,
-    );
+      allposts.forEach((post) => {
+        const topic = post?.topicMeta;
+
+        if (!topic?.slug) return;
+
+        topics[topic.slug] ??= {
+          slug: topic.slug,
+          label: topic.label,
+          posts: [],
+        };
+
+        topics[topic.slug].posts.push(post);
+      });
+
+      const sortedTopics = Object.values(topics).sort(
+        (a, b) => b.posts.length - a.posts.length,
+      );
+
+      const PostStack = await StackPostMaker(creator.name, sortedTopics);
+
+      const topHeadline = sortedTopics[0]?.posts?.[0] && {
+        _id: sortedTopics[0].posts[0]._id || sortedTopics[0].posts[0].id,
+        headline: sortedTopics[0].posts[0].normalizedText,
+      };
+
+      const topicSlug = sortedTopics.map((s) => s.slug);
+
+      const creatorFeed = {
+        creatorSlug: {
+          name: creator.name,
+          trendingScore: creator.trendingScore.toFixed(2),
+        },
+        topHeadline: topHeadline,
+        topicSlug: topicSlug,
+        PostStack: PostStack,
+      };
+
+      posts.push(creatorFeed);
+    }
 
     res.json({
       success: true,
-
-      breakingNews,
-
-      normalNews,
-
-      happeningNews,
-
-      topNewsRankCard,
-
-      influencers: topInfluencers,
+      data: posts,
     });
   } catch (error) {
     console.log(error);
@@ -86,7 +120,6 @@ router.post("/:id/stance", async (req, res) => {
       { $inc: { [`stances.${stance}`]: 1 } },
       { returnDocument: "after" },
     );
-    console.log(article, id, stance);
 
     res.json({
       success: true,

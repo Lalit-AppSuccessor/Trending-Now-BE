@@ -1,7 +1,7 @@
 import axios from "axios";
 
 import Article from "../models/ArticleStore.js";
-import Creator from "../models/CreatorArticle.js";
+import Creator from "../models/Creator.js";
 
 import {
   BREAKING_KEYWORDS,
@@ -27,102 +27,6 @@ function getQueryTerms(creator, limit = 10) {
 }
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ==========================
-// GET YOUTUBE CHANNEL INFO
-// ==========================
-
-async function getYoutubeChannelInfo(channelHandle) {
-  try {
-    const cleanHandle = channelHandle.replace("@", "").replace(/\s+/g, "");
-
-    const { data } = await axios.get(
-      `https://www.youtube.com/@${cleanHandle}`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        },
-        timeout: 10000,
-      },
-    );
-
-    const channelIdMatch =
-      data.match(/"channelId":"(UC[^"]+)"/) ||
-      data.match(/"externalId":"(UC[^"]+)"/) ||
-      data.match(/https:\\\/\\\/www\.youtube\.com\\\/channel\\\/(UC[^\\"]+)/);
-
-    const avatarMatch = data.match(/"avatar":\{"thumbnails":\[(.*?)\]\}/);
-
-    let avatar = null;
-
-    if (avatarMatch?.[1]) {
-      const urls = [...avatarMatch[1].matchAll(/"url":"([^"]+)"/g)];
-
-      if (urls.length) {
-        avatar = urls[urls.length - 1][1];
-
-        avatar = avatar.replace(/\\u0026/g, "&");
-
-        avatar = avatar.replace(/=s\d+[^-]*/, "=s800");
-      }
-    }
-
-    return {
-      channelId: channelIdMatch?.[1] || null,
-      avatar,
-    };
-  } catch (error) {
-    console.log("channel info failed:", channelHandle);
-
-    return {
-      channelId: null,
-      avatar: null,
-    };
-  }
-}
-
-// ==========================
-// GET RSS VIDEO
-// ==========================
-
-async function getLatestYoutubeVideo(channelId) {
-  try {
-    if (!channelId) return null;
-
-    const { data } = await axios.get(
-      `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`,
-      {
-        timeout: 10000,
-      },
-    );
-
-    const videoIdMatch = data.match(/<yt:videoId>(.*?)<\/yt:videoId>/);
-
-    const titleMatch = data.match(/<entry>[\s\S]*?<title>(.*?)<\/title>/);
-
-    const publishedMatch = data.match(/<published>(.*?)<\/published>/);
-
-    if (!videoIdMatch?.[1]) return null;
-
-    const videoId = videoIdMatch[1];
-
-    return {
-      videoId,
-
-      title: titleMatch?.[1] || "",
-
-      publishedAt: publishedMatch?.[1] || "",
-
-      url: `https://www.youtube.com/watch?v=${videoId}`,
-
-      thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    };
-  } catch (error) {
-    console.log("rss failed:", channelId);
-
-    return null;
-  }
-}
 
 export async function syncNewsFeed() {
   try {
@@ -394,49 +298,11 @@ export async function syncNewsFeed() {
 
     console.log("Total saved count:", totalSaved);
 
-    const sortedCreators = Object.values(creatorMap).sort(
-      (a, b) => b.score - a.score,
-    );
-    // .slice(0, 10);
-
-    await Promise.all(
-      sortedCreators.map(async (data) => {
-        const creator = data.creator;
-
-        const { channelId, avatar } = await getYoutubeChannelInfo(
-          creator.channelName,
-        );
-
-        const latestVideo = await getLatestYoutubeVideo(channelId);
-
-        return Creator.findOneAndUpdate(
-          {
-            name: creator.name,
-          },
-          {
-            name: creator.name,
-            channelName: creator.channelName,
-            channelId,
-            image: avatar,
-            rss_feed: latestVideo,
-            articleCount: data.articleCount,
-            breakingCount: data.breakingCount,
-            trendingScore: data.score,
-          },
-          {
-            upsert: true,
-            returnDocument: "after",
-          },
-        );
-      }),
-    );
-
     console.log("news synced!!");
 
     return {
       success: true,
       totalArticles: articles.length,
-      creators: sortedCreators.length,
     };
   } catch (error) {
     console.log("syncNewsFeed error:", error);
