@@ -20,9 +20,9 @@ router.get("/:creatorName", async (req, res) => {
   const response = await creatorPageFeed(key, creatorName);
 
   if (!response.success) {
-    return res.status(500).json(response.error);
+    return res.status(500).json(response);
   }
-  return res.status(200).json(response.data);
+  return res.status(200).json(response);
 });
 
 export default router;

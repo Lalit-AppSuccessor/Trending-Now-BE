@@ -19,9 +19,9 @@ router.get("/homepage", async (req, res) => {
   const key = CACHING_KEYS.HomepageFeedKey;
   const response = await homePageFeed(key);
   if (!response.success) {
-    return res.status(500).json(response.error);
+    return res.status(500).json(response);
   }
-  return res.status(200).json(response.data);
+  return res.status(200).json(response);
 });
 
 router.post("/:id/stance", async (req, res) => {
