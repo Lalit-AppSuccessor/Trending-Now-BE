@@ -10,7 +10,7 @@ import SocialAllDump from "../models/SocialAllDump.js";
 import ArticleStore from "../models/ArticleStore.js";
 import { collectPosts, StackPostMaker } from "../utils/feedHelper.js";
 import { CACHING_KEYS } from "../cache/cacheKeys.js";
-import { homePageFeed } from "../functions/homepageFeed.js";
+import { homePageFeed } from "../functions/homePageFeed.js";
 
 const router = express.Router();
 

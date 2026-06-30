@@ -1,5 +1,5 @@
 import { creatorPageFeed } from "../functions/creatorPageFeed.js";
-import { homePageFeed } from "../functions/homepageFeed.js";
+import { homePageFeed } from "../functions/homePageFeed.js";
 import Creator from "../models/Creator.js";
 import { CACHING_KEYS } from "./cacheKeys.js";
 
