@@ -18,6 +18,7 @@ import {
   YoutubeShorts,
 } from "./scraper/socialMediaScraper.js";
 import { cacheWarming } from "./cache/cacheWarming.js";
+import versionCheck from "./middleware/versionChecker.js";
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ const app = express();
 app.use(cors());
 
 app.use(express.json());
+app.use(versionCheck);
 
 app.use("/api/health", healthRoutes);
 app.use("/api/feed", feedRoutes);
