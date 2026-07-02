@@ -19,6 +19,7 @@ import {
   keywords,
   savePlatformData,
   sleep,
+  toUsername,
 } from "../utils/scraperHelpers.js";
 import { syncInstagramMedia } from "../utils/mediaCDNWorker.js";
 import SocialDumpStore from "../models/SocialDumpStore.js";
@@ -668,6 +669,58 @@ export const TwitterPosts = async () => {
 
 // ─── YOUTUBE: channel shorts ────────────────────────────────────────
 
+async function fetchShortsPage(username, continuationToken) {
+  const url = new URL(
+    `https://youtube-media-downloader9.p.rapidapi.com/channel/shorts`,
+  );
+  url.searchParams.set("username", username);
+  url.searchParams.set("lang", "en");
+  url.searchParams.set("geo", "IN");
+
+  if (continuationToken) {
+    url.searchParams.set("continuation", continuationToken);
+  }
+
+  const response = await rapidApiFetch(url.toString(), {
+    method: "GET",
+    headers: {
+      "x-rapidapi-host": "youtube-media-downloader9.p.rapidapi.com",
+      "Content-Type": "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Shorts API error: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  return response.json();
+}
+
+async function fetchVideoPublishDate(videoId) {
+  try {
+    const url = `https://youtube-v2.p.rapidapi.com/video/details?video_id=${videoId}`;
+
+    const response = await rapidApiFetch(url, {
+      method: "GET",
+      headers: {
+        "x-rapidapi-host": "youtube-v2.p.rapidapi.com",
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+
+    return data?.published_time || null;
+  } catch (err) {
+    console.log("fetchVideoPublishDate error:", err.message);
+    return null;
+  }
+}
+
 export const YoutubeShorts = async () => {
   // const { channels } = req.body;
 
@@ -682,19 +735,7 @@ export const YoutubeShorts = async () => {
     };
   }
 
-  let browser;
-
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
-    });
-
     const toDate = new Date();
 
     const config = await getPlatformScrapeConfig("youtubeShorts");
@@ -707,105 +748,61 @@ export const YoutubeShorts = async () => {
 
     for (const channel of channels) {
       try {
-        let shortsUrl = channel;
+        const username = toUsername(channel);
 
-        if (channel.startsWith("@")) {
-          shortsUrl = `https://www.youtube.com/${channel}/shorts`;
-        } else if (!channel.startsWith("http")) {
-          shortsUrl = `https://www.youtube.com/@${channel}/shorts`;
-        }
-
-        if (!shortsUrl.includes("/shorts")) {
-          shortsUrl = shortsUrl.replace(/\/$/, "") + "/shorts";
-        }
-
-        console.log("Scraping:", shortsUrl);
-
-        const page = await browser.newPage();
-        const shortPage = await browser.newPage();
-
-        await blockResources(page);
-        await blockResources(shortPage);
-
-        await page.goto(shortsUrl, {
-          waitUntil: "networkidle",
-          timeout: 120000,
-        });
-
-        await page.setViewportSize({
-          width: 1920,
-          height: 4000,
-        });
-
-        await page.evaluate(() => {
-          document.body.style.zoom = "30%";
-        });
-
-        await page.waitForTimeout(3000);
+        console.log("Fetching shorts for:", username);
 
         const processedUrls = new Set();
         const matchingShorts = [];
 
-        let stopScrolling = false;
-        let noNewContentCount = 0;
+        // Track which creators got NEW shorts from THIS channel, so we can
+        // save/append right after this channel finishes.
+        const channelPostsByCreator = {};
 
-        let scrollCount = 0;
-        const MAX_SCROLLS = 60;
+        let continuationToken = undefined;
+        let stopPaging = false;
 
-        let noKeywordMatchScrolls = 0;
-        const MAX_NO_MATCH_SCROLLS = 30;
+        let pageCount = 0;
+        const MAX_PAGES = 2; // mirrors MAX_SCROLLS
 
-        while (!stopScrolling && scrollCount < MAX_SCROLLS) {
-          scrollCount++;
+        let noKeywordMatchPages = 0;
+        const MAX_NO_MATCH_PAGES = 2; // mirrors MAX_NO_MATCH_SCROLLS
 
-          console.log(`${channel}: Scroll ${scrollCount}/${MAX_SCROLLS}`);
-          const discoveredShorts = await page
-            .locator("a")
-            .evaluateAll((els) => {
-              const results = [];
+        while (!stopPaging && pageCount < MAX_PAGES) {
+          pageCount++;
 
-              els.forEach((a) => {
-                const href = a.href;
+          console.log(`${channel}: Page ${pageCount}/${MAX_PAGES}`);
 
-                const isInvalidRoot =
-                  href === "https://www.youtube.com/shorts/";
+          console.log(
+            `Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`,
+          );
 
-                if (href && href.includes("/shorts/") && !isInvalidRoot) {
-                  const className = a.getAttribute("class") || "";
+          let pageData;
 
-                  // SAME LOGIC AS YoutubeShort
-                  if (
-                    className.includes(
-                      "shortsLockupViewModelHostOutsideMetadataEndpoint",
-                    )
-                  ) {
-                    results.push({
-                      url: href.split("?")[0],
-                      caption: a.getAttribute("title")?.trim() || "",
-                    });
-                  }
-                }
-              });
+          try {
+            pageData = await fetchShortsPage(username, continuationToken);
+          } catch (err) {
+            console.log(`${channel}: API fetch error -`, err.message);
+            break;
+          }
 
-              return results.filter(
-                (item, index, self) =>
-                  index === self.findIndex((x) => x.url === item.url),
-              );
-            });
+          const items = Array.isArray(pageData?.data) ? pageData.data : [];
+
+          // SAME LOGIC AS YoutubeShort (via title/caption keyword match)
+          const discoveredShorts = items
+            .filter((item) => item?.type === "shorts" && item?.videoId)
+            .map((item) => ({
+              url: `https://www.youtube.com/shorts/${item.videoId}`,
+              caption: (item.title || "").trim(),
+              videoId: item.videoId,
+            }));
 
           const newShorts = discoveredShorts.filter(
             (x) => !processedUrls.has(x.url),
           );
 
           if (!newShorts.length) {
-            noNewContentCount++;
-
-            if (noNewContentCount >= 3) {
-              console.log(`${channel}: No new shorts found after 3 attempts`);
-              break;
-            }
-          } else {
-            noNewContentCount = 0;
+            console.log(`${channel}: No new shorts found on this page`);
           }
 
           // mark all as processed
@@ -825,27 +822,31 @@ export const YoutubeShorts = async () => {
           });
 
           if (keywordMatchedShorts.length === 0) {
-            noKeywordMatchScrolls++;
+            noKeywordMatchPages++;
 
             console.log(
-              `${channel}: No keyword matches (${noKeywordMatchScrolls}/${MAX_NO_MATCH_SCROLLS})`,
+              `${channel}: No keyword matches (${noKeywordMatchPages}/${MAX_NO_MATCH_PAGES})`,
             );
           } else {
-            noKeywordMatchScrolls = 0;
+            noKeywordMatchPages = 0;
           }
 
-          if (!keywordMatchedShorts.length) {
-            await page.mouse.wheel(0, 15000);
-            await page.waitForTimeout(2000);
-            continue;
-          }
-
-          if (noKeywordMatchScrolls >= MAX_NO_MATCH_SCROLLS) {
+          if (noKeywordMatchPages >= MAX_NO_MATCH_PAGES) {
             console.log(
-              `${channel}: No keyword matches found after ${MAX_NO_MATCH_SCROLLS} consecutive scrolls. Skipping channel.`,
+              `${channel}: No keyword matches found after ${MAX_NO_MATCH_PAGES} consecutive pages. Skipping channel.`,
             );
 
             break;
+          }
+
+          continuationToken = pageData?.continuation;
+
+          if (!keywordMatchedShorts.length) {
+            if (!continuationToken) {
+              console.log(`${channel}: No more pages available`);
+              break;
+            }
+            continue;
           }
 
           console.log(
@@ -854,34 +855,15 @@ export const YoutubeShorts = async () => {
 
           let oldShortsCount = 0;
 
-          console.log(
-            `Memory: ${Math.round(process.memoryUsage().rss / 1024 / 1024)} MB`,
-          );
-
           for (const short of keywordMatchedShorts) {
             try {
-              await shortPage.goto(short.url, {
-                waitUntil: "domcontentloaded",
-                timeout: 60000,
-              });
+              const publishDate = await fetchVideoPublishDate(short.videoId);
 
-              await shortPage.waitForTimeout(1000);
-
-              const shortInfo = await shortPage.evaluate(() => {
-                const player = window.ytInitialPlayerResponse;
-
-                const micro = player?.microformat?.playerMicroformatRenderer;
-
-                return {
-                  publishDate: micro?.publishDate || micro?.uploadDate || null,
-                };
-              });
-
-              if (!shortInfo?.publishDate) {
+              if (!publishDate) {
                 continue;
               }
 
-              const shortDate = new Date(shortInfo.publishDate);
+              const shortDate = new Date(publishDate);
 
               if (shortDate < fromDate) {
                 oldShortsCount++;
@@ -898,12 +880,13 @@ export const YoutubeShorts = async () => {
               if (!matchedCreators.length) {
                 continue;
               }
+
               if (shortDate >= fromDate && shortDate <= toDate) {
                 const shortData = {
                   creators: matchedCreators,
                   url: short.url,
                   caption: short.caption,
-                  publishDate: shortInfo.publishDate,
+                  publishDate,
                   channel,
                 };
 
@@ -927,6 +910,12 @@ export const YoutubeShorts = async () => {
                   bucket.data.push(shortData);
 
                   bucket.totalPosts++;
+
+                  // stage this post for the per-channel save below
+                  if (!channelPostsByCreator[creatorName]) {
+                    channelPostsByCreator[creatorName] = [];
+                  }
+                  channelPostsByCreator[creatorName].push(shortData);
                 }
               }
             } catch (err) {
@@ -943,21 +932,46 @@ export const YoutubeShorts = async () => {
           ) {
             console.log(`${channel}: Reached date range limit`);
 
-            stopScrolling = true;
+            stopPaging = true;
             break;
           }
 
-          await page.mouse.wheel(0, 15000);
-
-          await page.waitForTimeout(2000);
+          if (!continuationToken) {
+            console.log(`${channel}: No more pages available`);
+            break;
+          }
         }
 
-        if (scrollCount >= MAX_SCROLLS) {
-          console.log(`${channel}: Reached max scroll limit (${MAX_SCROLLS})`);
+        if (pageCount >= MAX_PAGES) {
+          console.log(`${channel}: Reached max page limit (${MAX_PAGES})`);
         }
 
-        await shortPage.close();
-        await page.close();
+        // Save/append this channel's newly matched shorts right away,
+        // before moving on to the next channel.
+        const creatorNamesForChannel = Object.keys(channelPostsByCreator);
+
+        if (creatorNamesForChannel.length) {
+          console.log(
+            `${channel}: Saving ${creatorNamesForChannel.length} creator(s) to DB`,
+          );
+
+          for (const creatorName of creatorNamesForChannel) {
+            try {
+              await savePlatformData({
+                creatorName,
+                platform: "youtubeShorts",
+                posts: channelPostsByCreator[creatorName],
+              });
+            } catch (err) {
+              console.log(
+                `${channel}: Failed saving posts for ${creatorName} -`,
+                err.message,
+              );
+            }
+          }
+        } else {
+          console.log(`${channel}: No new shorts to save`);
+        }
       } catch (err) {
         console.log(err);
       }
@@ -967,14 +981,6 @@ export const YoutubeShorts = async () => {
       ...creator,
       seenPosts: undefined,
     }));
-
-    for (const creator of creatorResults) {
-      await savePlatformData({
-        creatorName: creator.creator,
-        platform: "youtubeShorts",
-        posts: creator.data,
-      });
-    }
 
     return {
       success: true,
@@ -988,10 +994,6 @@ export const YoutubeShorts = async () => {
       success: false,
       error: error.message,
     };
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 };
 

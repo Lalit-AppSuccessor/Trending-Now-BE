@@ -414,3 +414,11 @@ export async function getLatestYoutubeVideo(channelId) {
     return null;
   }
 }
+
+export function toUsername(channel) {
+  if (channel.startsWith("http")) {
+    const match = channel.match(/@([^/?]+)/);
+    return match ? match[1] : channel;
+  }
+  return channel.startsWith("@") ? channel.slice(1) : channel;
+}
