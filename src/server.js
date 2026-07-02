@@ -133,7 +133,7 @@ const runDailyAt6AM = () => {
     const executeJob = async () => {
       try {
         await syncNewsFeed();
-        // await YoutubeShorts();
+        await YoutubeShorts();
         await InstagramPosts();
         await TwitterPosts();
         await creatorTrendScoreCalc();
@@ -192,7 +192,7 @@ const runEveryFridayAt6AM = () => {
   }, initialDelay);
 };
 
-// runEveryFridayAt6AM();
+runEveryFridayAt6AM();
 
 // ----------- Testing function calls --------------
 
@@ -201,7 +201,7 @@ const runEveryFridayAt6AM = () => {
 // await syncNewsFeed();
 // syncInstagramMedia().catch(console.error);
 // await syncCreatorFollowers();
-await YoutubeShorts();
+// await YoutubeShorts();
 // await InstagramPosts();
 // await TwitterPosts();
 // await creatorTrendScoreCalc()
