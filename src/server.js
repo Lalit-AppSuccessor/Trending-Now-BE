@@ -200,8 +200,8 @@ const runEveryFridayAt6AM = () => {
 
 // await syncNewsFeed();
 // syncInstagramMedia().catch(console.error);
-await syncCreatorFollowers();
-// await YoutubeShorts();
+// await syncCreatorFollowers();
+await YoutubeShorts();
 // await InstagramPosts();
 // await TwitterPosts();
 // await creatorTrendScoreCalc()
