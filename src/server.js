@@ -113,18 +113,18 @@ app.listen(port || 3000, "0.0.0.0", () => {
   console.log("Server running!!", port);
 });
 
-// ----------- Daily Scheduler (6AM) --------------
+// ----------- Daily Scheduler (7AM - IST / 1AM - UTC) --------------
 
-const runDailyAt6AM = () => {
+const runDailyAt7AM = () => {
   const now = new Date();
 
   const nextRun = new Date();
-  nextRun.setHours(6, 0, 0, 0);
+  nextRun.setHours(1, 30, 0, 0);
 
-  // If it's already past 6 AM today, schedule for tomorrow
+  // If it's already past 7 AM today, schedule for tomorrow
   if (now >= nextRun) {
     nextRun.setDate(nextRun.getDate() + 1);
-    console.log("next day 6 am job set");
+    console.log("next day 7 am job set");
   }
 
   const initialDelay = nextRun.getTime() - now.getTime();
@@ -144,7 +144,7 @@ const runDailyAt6AM = () => {
       }
     };
 
-    // Run immediately at 6 AM
+    // Run immediately at 7 AM
     executeJob();
 
     // Then run every 12 hours
@@ -152,25 +152,25 @@ const runDailyAt6AM = () => {
   }, initialDelay);
 };
 
-runDailyAt6AM();
+runDailyAt7AM();
 
-// ----------- Weekly Scheduler (6AM) --------------
+// ----------- Weekly Scheduler (7AM - IST / 1AM - UTC) --------------
 
-const runEveryFridayAt6AM = () => {
+const runEveryFridayAt7AM = () => {
   const now = new Date();
 
   const nextRun = new Date();
-  nextRun.setHours(6, 0, 0, 0);
+  nextRun.setHours(1, 30, 0, 0);
 
   // Calculate days until next Friday (Friday = 5)
   const daysUntilFriday = (5 - now.getDay() + 7) % 7;
 
   nextRun.setDate(now.getDate() + daysUntilFriday);
 
-  // If it's already past 6 AM on Friday, schedule for next Friday
+  // If it's already past 7 AM on Friday, schedule for next Friday
   if (daysUntilFriday === 0 && now >= nextRun) {
     nextRun.setDate(nextRun.getDate() + 7);
-    console.log("next Friday 6 AM job set");
+    console.log("next Friday 7 AM job set");
   }
 
   const initialDelay = nextRun.getTime() - now.getTime();
@@ -184,7 +184,7 @@ const runEveryFridayAt6AM = () => {
       }
     };
 
-    // Run at the scheduled Friday 6 AM
+    // Run at the scheduled Friday 7 AM
     executeWeeklyJob();
 
     // Then every 7 days
@@ -192,7 +192,7 @@ const runEveryFridayAt6AM = () => {
   }, initialDelay);
 };
 
-runEveryFridayAt6AM();
+runEveryFridayAt7AM();
 
 // ----------- Testing function calls --------------
 
