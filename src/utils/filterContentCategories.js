@@ -431,15 +431,15 @@ export const postMatchesTopic = (post, slug) => {
   }
 
   /* hashtags array */
-  if (Array.isArray(post.hashtags)) {
-    if (
-      post.hashtags.some(
-        (tag) => normalizeTopic(String(tag).replace(/^#/, "")) === target,
-      )
-    ) {
-      return true;
-    }
-  }
+  // if (Array.isArray(post.hashtags)) {
+  //   if (
+  //     post.hashtags.some(
+  //       (tag) => normalizeTopic(String(tag).replace(/^#/, "")) === target,
+  //     )
+  //   ) {
+  //     return true;
+  //   }
+  // }
 
   /* inline hashtags */
   // const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
