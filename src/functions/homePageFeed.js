@@ -86,6 +86,7 @@ export async function homePageFeed(key) {
           name: creator.name,
           trendingScore: creator.trendingScore.toFixed(2),
           image: creator.image,
+          accentColor: creator.accentColor,
         },
         topHeadline: topHeadline,
         topicSlug: topicSlug,

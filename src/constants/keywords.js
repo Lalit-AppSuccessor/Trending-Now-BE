@@ -307,6 +307,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["samay raina latest news"],
     channelName: "@SamayRainaOfficial",
     instagram: "maisamayhoon",
+    accentColor: "#a78bfa",
   },
   {
     name: "Elvish_Yadav",
@@ -328,6 +329,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["elvish yadav latest news"],
     channelName: "@ElvishYadavVlogs",
     instagram: "elvish_yadav",
+    accentColor: "#2dd4a0",
   },
   {
     name: "Urfi_Javed",
@@ -357,6 +359,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["urfi javed latest news"],
     channelName: "@TheUorfi",
     instagram: "urf7i",
+    accentColor: "#f472b6",
   },
   {
     name: "Ranveer_Allahbadia",
@@ -383,6 +386,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["ranveer allahbadia latest news"],
     channelName: "@beerbiceps",
     instagram: "ranveerallahbadia",
+    accentColor: "#f0a830",
   },
   {
     name: "Munawar_Faruqui",
@@ -407,6 +411,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["munawar faruqui latest news"],
     channelName: "@munawar0018",
     instagram: "munawar.faruqui",
+    accentColor: "#c084fc",
   },
   {
     name: "Dhruv_Rathee",
@@ -433,6 +438,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["dhruv rathee latest news"],
     channelName: "@dhruvrathee",
     instagram: "dhruvrathee",
+    accentColor: "#e8d44d",
   },
   {
     name: "Ajey_Nagar",
@@ -454,6 +460,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["carryminati latest news"],
     channelName: "@CarryMinati",
     instagram: "carryminati",
+    accentColor: "#1d9bf0",
   },
   {
     name: "Bhuvan_Bam",
@@ -476,6 +483,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["bhuvan bam latest news"],
     channelName: "@BBKiVines",
     instagram: "bhuvan.bam22",
+    accentColor: "#34d399",
   },
   {
     name: "Abhishek_Malhan",
@@ -500,6 +508,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["abhishek malhan latest news"],
     channelName: "@FukraInsaan",
     instagram: "fukra_insaan",
+    accentColor: "#ff8c42",
   },
   {
     name: "Apoorva_Mukhija",
@@ -526,6 +535,7 @@ export const CREATOR_NAMES = [
     twitterKeyword: ["apoorva mukhija latest news"],
     channelName: "@the.rebelkid",
     instagram: "the.rebel.kid",
+    accentColor: "#f2698a",
   },
 ];
 

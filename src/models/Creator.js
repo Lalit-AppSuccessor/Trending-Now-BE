@@ -17,6 +17,7 @@ const CreatorSchema = new mongoose.Schema(
     },
 
     image: { type: String },
+    accentColor: { type: String },
   },
   {
     timestamps: true,
