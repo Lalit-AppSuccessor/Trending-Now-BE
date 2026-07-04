@@ -420,7 +420,13 @@ export const postMatchesTopic = (post, slug) => {
 
   const wordCheck = wordBoundaryRegex.test(searchableText);
 
+  /*  caption check */
   if (wordCheck) {
+    return true;
+  }
+
+  /* topic */
+  if (normalizeTopic(post.topic) === target) {
     return true;
   }
 
@@ -435,21 +441,16 @@ export const postMatchesTopic = (post, slug) => {
     }
   }
 
-  /* topic */
-  if (normalizeTopic(post.topic) === target) {
-    return true;
-  }
-
   /* inline hashtags */
-  const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
+  // const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
 
-  if (
-    inlineHashtags.some(
-      (tag) => normalizeTopic(tag.replace(/^#/, "")) === target,
-    )
-  ) {
-    return true;
-  }
+  // if (
+  //   inlineHashtags.some(
+  //     (tag) => normalizeTopic(tag.replace(/^#/, "")) === target,
+  //   )
+  // ) {
+  //   return true;
+  // }
   return false;
 };
 
