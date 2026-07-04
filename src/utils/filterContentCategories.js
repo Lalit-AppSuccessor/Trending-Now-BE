@@ -430,27 +430,29 @@ export const postMatchesTopic = (post, slug) => {
     return true;
   }
 
-  /* hashtags array */
-  // if (Array.isArray(post.hashtags)) {
-  //   if (
-  //     post.hashtags.some(
-  //       (tag) => normalizeTopic(String(tag).replace(/^#/, "")) === target,
-  //     )
-  //   ) {
-  //     return true;
-  //   }
-  // }
+  if (post.normalizedText <= 20 || !post.normalizedText) {
+    /* hashtags array */
+    if (Array.isArray(post.hashtags)) {
+      if (
+        post.hashtags.some(
+          (tag) => normalizeTopic(String(tag).replace(/^#/, "")) === target,
+        )
+      ) {
+        return true;
+      }
+    }
 
-  /* inline hashtags */
-  // const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
+    /* inline hashtags */
+    const inlineHashtags = text.match(/#([a-zA-Z][a-zA-Z0-9_]{1,28})/g) || [];
 
-  // if (
-  //   inlineHashtags.some(
-  //     (tag) => normalizeTopic(tag.replace(/^#/, "")) === target,
-  //   )
-  // ) {
-  //   return true;
-  // }
+    if (
+      inlineHashtags.some(
+        (tag) => normalizeTopic(tag.replace(/^#/, "")) === target,
+      )
+    ) {
+      return true;
+    }
+  }
   return false;
 };
 
