@@ -767,4 +767,8 @@ export const BLOCKED_WORDS = [
   "thing",
   "things",
   "kuch",
+  "comedy",
+  "comedian",
+  "trending",
+  "entertainment",
 ];
