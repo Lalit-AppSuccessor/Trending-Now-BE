@@ -7,6 +7,7 @@ import SocialAllDump from "../models/SocialAllDump.js";
 import User from "../models/User.js";
 import mongoose from "mongoose";
 import Comment from "../models/Comment.js";
+import ArticleStore from "../models/ArticleStore.js";
 
 // REGISTER OR LOGIN
 export const createOrLoginUser = async (req, res) => {
@@ -284,6 +285,10 @@ export const createComment = async (req, res) => {
       });
     }
 
+    const articleExists = await ArticleStore.exists({
+      _id: postId,
+    });
+
     const postExists = await SocialAllDump.exists({
       $or: [
         { "instagram.postId": postId },
@@ -292,10 +297,10 @@ export const createComment = async (req, res) => {
       ],
     });
 
-    if (!postExists) {
+    if (!postExists || !articleExists) {
       return res.status(404).json({
         success: false,
-        message: "Post does not exist",
+        message: "Post/Article does not exist",
       });
     }
 
