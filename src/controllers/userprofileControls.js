@@ -5,6 +5,8 @@ import {
 } from "../utils/usernameGen.js";
 import SocialAllDump from "../models/SocialAllDump.js";
 import User from "../models/User.js";
+import mongoose from "mongoose";
+import Comment from "../models/Comment.js";
 
 // REGISTER OR LOGIN
 export const createOrLoginUser = async (req, res) => {
@@ -262,9 +264,11 @@ export const refreshToken = async (req, res) => {
 export const createComment = async (req, res) => {
   try {
     const firebase_uid = req.auth_firebase_uid;
-    const { source_is, headline, topic, postId, comment } = req.body;
+    const { source, headline, topic, postId, comment } = req.body;
 
-    if (!firebase_uid || !source_is || !postId || !comment) {
+    let is_stack = false;
+
+    if (!firebase_uid || !source || !postId || !comment) {
       return res.status(400).json({
         success: false,
         message: "Required fields missing",
@@ -295,6 +299,10 @@ export const createComment = async (req, res) => {
       });
     }
 
+    if (topic) {
+      is_stack = true;
+    }
+
     const newComment = {
       _id: new mongoose.Types.ObjectId(),
       user_id: user._id,
@@ -307,16 +315,17 @@ export const createComment = async (req, res) => {
       {
         $setOnInsert: {
           postId,
-          source_is,
+          source,
           headline,
           topic,
+          is_stack,
         },
         $push: {
           comments: newComment,
         },
       },
       {
-        new: true,
+        returnDocument: "after",
         upsert: true,
       },
     );
@@ -390,7 +399,7 @@ export const deleteComment = async (req, res) => {
         },
       },
       {
-        new: true,
+        returnDocument: "after",
       },
     );
 

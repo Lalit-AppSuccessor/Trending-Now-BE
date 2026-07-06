@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 const CommentSchema = new mongoose.Schema(
   {
     postId: {
@@ -6,7 +8,8 @@ const CommentSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
-    source_is: String,
+    source: String,
+    is_stack: { type: Boolean, default: false },
     topic: String,
     headline: String,
 
@@ -34,3 +37,5 @@ const CommentSchema = new mongoose.Schema(
     versionKey: false,
   },
 );
+
+export default mongoose.model("Comment", CommentSchema);
