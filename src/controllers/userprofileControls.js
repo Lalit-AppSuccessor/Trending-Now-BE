@@ -285,30 +285,32 @@ export const createComment = async (req, res) => {
       });
     }
 
-    const articleExists =
-      source === "news" ? !!(await ArticleStore.findById(postId)) : null;
+    if (source !== "feed") {
+      const articleExists =
+        source === "news" ? !!(await ArticleStore.findById(postId)) : null;
 
-    if (source === "news" && !articleExists) {
-      return res.status(404).json({
-        success: false,
-        message: "Article does not exist",
-      });
-    }
-
-    if (source !== "news") {
-      const postExists = await SocialAllDump.exists({
-        $or: [
-          { "instagram.postId": postId },
-          { "twitter.tweetId": postId },
-          { "youtubeShorts.shortId": postId },
-        ],
-      });
-
-      if (!postExists) {
+      if (source === "news" && !articleExists) {
         return res.status(404).json({
           success: false,
-          message: "Post does not exist",
+          message: "Article does not exist",
         });
+      }
+
+      if (source !== "news") {
+        const postExists = await SocialAllDump.exists({
+          $or: [
+            { "instagram.postId": postId },
+            { "twitter.tweetId": postId },
+            { "youtubeShorts.shortId": postId },
+          ],
+        });
+
+        if (!postExists) {
+          return res.status(404).json({
+            success: false,
+            message: "Post does not exist",
+          });
+        }
       }
     }
 
