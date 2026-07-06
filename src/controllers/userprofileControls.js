@@ -1,9 +1,10 @@
-import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import {
   generateUniqueUsername,
   isUsernameAvailable,
 } from "../utils/usernameGen.js";
+import SocialAllDump from "../models/SocialAllDump.js";
+import User from "../models/User.js";
 
 // REGISTER OR LOGIN
 export const createOrLoginUser = async (req, res) => {
@@ -253,6 +254,162 @@ export const refreshToken = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
+    });
+  }
+};
+
+// USER COMMENTS
+export const createComment = async (req, res) => {
+  try {
+    const firebase_uid = req.auth_firebase_uid;
+    const { source_is, headline, topic, postId, comment } = req.body;
+
+    if (!firebase_uid || !source_is || !postId || !comment) {
+      return res.status(400).json({
+        success: false,
+        message: "Required fields missing",
+      });
+    }
+
+    const user = await User.findOne({ firebaseUid: firebase_uid }).lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const postExists = await SocialAllDump.exists({
+      $or: [
+        { "instagram.postId": postId },
+        { "twitter.tweetId": postId },
+        { "youtubeShorts.shortId": postId },
+      ],
+    });
+
+    if (!postExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Post does not exist",
+      });
+    }
+
+    const newComment = {
+      _id: new mongoose.Types.ObjectId(),
+      user_id: user._id,
+      comment,
+      eventDate: new Date(),
+    };
+
+    const data = await Comment.findOneAndUpdate(
+      { postId },
+      {
+        $setOnInsert: {
+          postId,
+          source_is,
+          headline,
+          topic,
+        },
+        $push: {
+          comments: newComment,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+      },
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Comment added successfully",
+      data,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+export const getComments = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const comments = await Comment.findOne({ postId })
+      .populate("comments.user_id", "username profilePic")
+      .lean();
+
+    if (!comments) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: comments,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+export const deleteComment = async (req, res) => {
+  try {
+    const firebase_uid = req.auth_firebase_uid;
+    const { postId, commentId } = req.body;
+
+    const user = await User.findOne({
+      firebaseUid: firebase_uid,
+    }).lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const result = await Comment.findOneAndUpdate(
+      {
+        postId,
+      },
+      {
+        $pull: {
+          comments: {
+            _id: commentId,
+            user_id: user._id,
+          },
+        },
+      },
+      {
+        new: true,
+      },
+    );
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Comment deleted successfully",
+      data: result,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
     });
   }
 };

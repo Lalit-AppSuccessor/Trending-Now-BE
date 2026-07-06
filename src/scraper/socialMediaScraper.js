@@ -885,6 +885,7 @@ export const YoutubeShorts = async () => {
                 const shortData = {
                   creators: matchedCreators,
                   url: short.url,
+                  shortId: short.videoId,
                   caption: short.caption,
                   publishDate,
                   channel,
