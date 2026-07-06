@@ -285,9 +285,18 @@ export const createComment = async (req, res) => {
       });
     }
 
-    const articleExists = await ArticleStore.exists({
-      _id: postId,
-    });
+    const articleExists = mongoose.Types.ObjectId.isValid(postId)
+      ? await ArticleStore.exists({
+          _id: new mongoose.Types.ObjectId(postId),
+        })
+      : null;
+
+    if (mongoose.Types.ObjectId.isValid(postId) && !articleExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Article does not exist",
+      });
+    }
 
     const postExists = await SocialAllDump.exists({
       $or: [
@@ -297,10 +306,10 @@ export const createComment = async (req, res) => {
       ],
     });
 
-    if (!postExists || !articleExists) {
+    if (!postExists) {
       return res.status(404).json({
         success: false,
-        message: "Post/Article does not exist",
+        message: "Article does not exist",
       });
     }
 
