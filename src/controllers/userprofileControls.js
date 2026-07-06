@@ -285,32 +285,31 @@ export const createComment = async (req, res) => {
       });
     }
 
-    const articleExists = mongoose.Types.ObjectId.isValid(postId)
-      ? await ArticleStore.exists({
-          _id: new mongoose.Types.ObjectId(postId),
-        })
-      : null;
+    const articleExists =
+      source === "news" ? !!(await ArticleStore.findById(postId)) : null;
 
-    if (mongoose.Types.ObjectId.isValid(postId) && !articleExists) {
+    if (source === "news" && !articleExists) {
       return res.status(404).json({
         success: false,
         message: "Article does not exist",
       });
     }
 
-    const postExists = await SocialAllDump.exists({
-      $or: [
-        { "instagram.postId": postId },
-        { "twitter.tweetId": postId },
-        { "youtubeShorts.shortId": postId },
-      ],
-    });
-
-    if (!postExists) {
-      return res.status(404).json({
-        success: false,
-        message: "Article does not exist",
+    if (source !== "news") {
+      const postExists = await SocialAllDump.exists({
+        $or: [
+          { "instagram.postId": postId },
+          { "twitter.tweetId": postId },
+          { "youtubeShorts.shortId": postId },
+        ],
       });
+
+      if (!postExists) {
+        return res.status(404).json({
+          success: false,
+          message: "Post does not exist",
+        });
+      }
     }
 
     if (topic) {
