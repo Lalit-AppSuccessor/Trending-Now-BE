@@ -13,6 +13,17 @@ const CommentSchema = new mongoose.Schema(
     topic: String,
     headline: String,
 
+    stances: {
+      support: {
+        type: Number,
+        default: 0,
+      },
+      oppose: {
+        type: Number,
+        default: 0,
+      },
+    },
+
     comments: [
       {
         user_id: {

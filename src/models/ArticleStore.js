@@ -43,17 +43,6 @@ const ArticleSchema = new mongoose.Schema(
       default: 0,
     },
 
-    stances: {
-      support: {
-        type: Number,
-        default: 0,
-      },
-      oppose: {
-        type: Number,
-        default: 0,
-      },
-    },
-
     reactions: {
       like: {
         type: Number,

@@ -265,7 +265,7 @@ export const refreshToken = async (req, res) => {
 export const createComment = async (req, res) => {
   try {
     const firebase_uid = req.auth_firebase_uid;
-    const { source, headline, topic, postId, comment } = req.body;
+    const { source, headline, topic, postId, comment, stance } = req.body;
 
     let is_stack = false;
 
@@ -273,6 +273,15 @@ export const createComment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Required fields missing",
+      });
+    }
+
+    const allowedStances = ["support", "oppose"];
+
+    if (stance && !allowedStances.includes(stance)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid stance",
       });
     }
 
@@ -335,6 +344,9 @@ export const createComment = async (req, res) => {
           topic,
           is_stack,
         },
+        ...(stance && {
+          $inc: { [`stances.${stance}`]: 1 },
+        }),
         $push: {
           comments: newComment,
         },
