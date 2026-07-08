@@ -28,7 +28,7 @@ app.use(cors());
 app.use(express.json());
 app.use("/api", versionCheck);
 
-app.use("/api/health", healthRoutes);
+app.use("/health", healthRoutes);
 app.use("/api/feed", feedRoutes);
 app.use("/media", express.static(path.join(process.cwd(), "media")));
 app.use("/api/user", userRoutes);
