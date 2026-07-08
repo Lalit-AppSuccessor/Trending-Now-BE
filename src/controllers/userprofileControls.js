@@ -329,7 +329,7 @@ export const createComment = async (req, res) => {
 
     const newComment = {
       _id: new mongoose.Types.ObjectId(),
-      user_id: user._id,
+      user_id: user.firebaseUid,
       comment,
       eventDate: new Date(),
     };
