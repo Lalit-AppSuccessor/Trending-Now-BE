@@ -221,7 +221,7 @@ function clusterAndFilterPosts(
     maxNewsPerCluster = 3,
     maxFunPerCluster = 2,
     platformLimits = {}, // e.g. { youtube_shorts: 1, instagram: 2 }
-    defaultPlatformLimit = 2,
+    defaultPlatformLimit = 1,
     accountLimit = 1, // max posts per account per cluster (key insight!)
     diversityBonus = 0.15, // score boost for bringing a new platform to cluster
   } = {},
