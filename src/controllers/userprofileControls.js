@@ -356,7 +356,9 @@ export const createComment = async (req, res) => {
         returnDocument: "after",
         upsert: true,
       },
-    );
+    )
+      .populate("comments.UserObject_id", "username profileImage")
+      .lean();
 
     return res.status(201).json({
       success: true,
@@ -435,7 +437,9 @@ export const deleteComment = async (req, res) => {
       {
         returnDocument: "after",
       },
-    );
+    )
+      .populate("comments.UserObject_id", "username profileImage")
+      .lean();
 
     if (!result) {
       return res.status(404).json({
