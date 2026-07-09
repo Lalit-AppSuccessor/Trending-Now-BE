@@ -329,6 +329,7 @@ export const createComment = async (req, res) => {
 
     const newComment = {
       _id: new mongoose.Types.ObjectId(),
+      UserObject_id: user._id,
       user_id: user.firebaseUid,
       comment,
       eventDate: new Date(),
@@ -375,7 +376,7 @@ export const getComments = async (req, res) => {
     const { postId } = req.params;
 
     const comments = await Comment.findOne({ postId })
-      .populate("comments.user_id", "username profilePic")
+      .populate("comments.UserObject_id", "username profileImage")
       .lean();
 
     if (!comments) {
@@ -416,12 +417,18 @@ export const deleteComment = async (req, res) => {
     const result = await Comment.findOneAndUpdate(
       {
         postId,
+        comments: {
+          $elemMatch: {
+            _id: commentId,
+            user_id: user.firebaseUid,
+          },
+        },
       },
       {
         $pull: {
           comments: {
             _id: commentId,
-            user_id: user._id,
+            user_id: user.firebaseUid,
           },
         },
       },
@@ -433,7 +440,7 @@ export const deleteComment = async (req, res) => {
     if (!result) {
       return res.status(404).json({
         success: false,
-        message: "Comment not found",
+        message: "Comment not found or you are not authorized to delete it",
       });
     }
 
