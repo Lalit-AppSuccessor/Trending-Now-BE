@@ -26,7 +26,7 @@ const app = express();
 app.use(cors());
 
 app.use(express.json());
-// app.use("/api", versionCheck);
+app.use("/api", versionCheck);
 
 app.use("/health", healthRoutes);
 app.use("/api/feed", feedRoutes);
@@ -133,7 +133,7 @@ const runDailyAt7AM = () => {
     const executeJob = async () => {
       try {
         await syncNewsFeed();
-        await YoutubeShorts();
+        // await YoutubeShorts();
         await InstagramPosts();
         await TwitterPosts();
         await creatorTrendScoreCalc();
