@@ -4,12 +4,16 @@ import SocialAllDump from "../models/SocialAllDump.js";
 import SocialDumpStore from "../models/SocialDumpStore.js";
 import { normaliseCreator } from "../utils/normalizer.js";
 
-export async function creatorPageFeed(key, creatorName) {
-  const cached = cache.get(key);
-
-  if (cached) {
-    console.log("Serving from cache");
-    return { success: true, data: cached };
+export async function creatorPageFeed(key, creatorName, forceRefresh = false) {
+  if (!forceRefresh) {
+    const cached = cache.get(key);
+    if (cached) {
+      console.log("Serving from cache");
+      return {
+        success: true,
+        data: cached,
+      };
+    }
   }
 
   try {

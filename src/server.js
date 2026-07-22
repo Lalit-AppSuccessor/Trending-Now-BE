@@ -109,7 +109,7 @@ mongoose.connect(process.env.MONGO_URI);
 
 const port = process.env.PORT;
 
-app.listen(port || 3000, "0.0.0.0", () => {
+app.listen(port || 3001, "0.0.0.0", () => {
   console.log("Server running!!", port);
 });
 
@@ -196,7 +196,7 @@ runEveryFridayAt7AM();
 
 // ----------- Testing function calls --------------
 
-// await cacheWarming();
+await cacheWarming();
 
 // await syncNewsFeed();
 // syncInstagramMedia().catch(console.error);

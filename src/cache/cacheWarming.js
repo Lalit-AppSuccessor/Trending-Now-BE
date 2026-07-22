@@ -9,7 +9,7 @@ export async function cacheWarming() {
   try {
     // Home Page Feed warming up
     const key1 = CACHING_KEYS.HomepageFeedKey;
-    await homePageFeed(key1);
+    await homePageFeed(key1, true);
 
     // Creators Page Feed warming up
     const topInfluencers = (
@@ -18,7 +18,7 @@ export async function cacheWarming() {
 
     for (const creator of topInfluencers) {
       const key2 = CACHING_KEYS.CreatorPageFeedKey + creator;
-      await creatorPageFeed(key2, creator);
+      await creatorPageFeed(key2, creator, true);
     }
     console.info("cache warming completed.");
   } catch (error) {

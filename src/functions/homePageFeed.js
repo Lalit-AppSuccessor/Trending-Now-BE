@@ -6,15 +6,16 @@ import SocialDumpStore from "../models/SocialDumpStore.js";
 import { collectPosts, StackPostMaker } from "../utils/feedHelper.js";
 import { normaliseCreator } from "../utils/normalizer.js";
 
-export async function homePageFeed(key) {
-  const cached = cache.get(key);
-
-  if (cached) {
-    console.log("Serving from cache");
-    return {
-      success: true,
-      data: cached,
-    };
+export async function homePageFeed(key, forceRefresh = false) {
+  if (!forceRefresh) {
+    const cached = cache.get(key);
+    if (cached) {
+      console.log("Serving from cache");
+      return {
+        success: true,
+        data: cached,
+      };
+    }
   }
 
   try {
